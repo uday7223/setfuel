@@ -1,10 +1,10 @@
 import React, { useCallback, useState } from 'react';
 import {
-  FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,6 +14,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card } from '../../components/ui/Card';
 import { PrimaryButton } from '../../components/ui/PrimaryButton';
 import { TextField } from '../../components/ui/TextField';
+import {
+  flattenRoutineItems,
+  PERSONAL_ROUTINES,
+  type PersonalRoutine,
+} from '../../data/personalRoutines';
 import { colors, spacing } from '../../theme';
 
 type SetEntry = { id: string; reps: string; weightKg: string };
@@ -25,13 +30,14 @@ function makeId() {
 
 /**
  * Local-only workout log: exercises → sets (reps / weight).
- * Same shape you’ll later POST to your API; only persistence is missing.
+ * Personal routines live in `data/personalRoutines.ts` — edit there to change your split.
  */
 export function WorkoutTrackerScreen() {
   const [sessionStarted, setSessionStarted] = useState(false);
   const [exercises, setExercises] = useState<ExerciseEntry[]>([]);
   const [exerciseModalOpen, setExerciseModalOpen] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState('');
+  const [routineViewer, setRoutineViewer] = useState<PersonalRoutine | null>(null);
 
   const startWorkout = useCallback(() => {
     setSessionStarted(true);
@@ -106,6 +112,20 @@ export function WorkoutTrackerScreen() {
     setExercises((prev) => prev.filter((e) => e.id !== exerciseId));
   }, []);
 
+  const addRoutineExercisesToSession = useCallback(() => {
+    if (!routineViewer || !sessionStarted) return;
+    const names = flattenRoutineItems(routineViewer);
+    setExercises((prev) => [
+      ...prev,
+      ...names.map((name) => ({
+        id: makeId(),
+        name,
+        sets: [{ id: makeId(), reps: '10', weightKg: '' }],
+      })),
+    ]);
+    setRoutineViewer(null);
+  }, [routineViewer, sessionStarted]);
+
   const setCount = exercises.reduce((n, e) => n + e.sets.length, 0);
 
   return (
@@ -115,60 +135,82 @@ export function WorkoutTrackerScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
-        <Text style={styles.title}>Workout</Text>
-        <Text style={styles.sub}>
-          Tap Start, add exercises, then log sets. On the web you’d use inputs the same way — here they’re native
-          TextInputs.
-        </Text>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.title}>Workout</Text>
+          <Text style={styles.sub}>
+            Your programs are below for quick reference. Start a session, then load a full day in one tap or add
+            exercises yourself.
+          </Text>
 
-        {!sessionStarted ? (
-          <Card style={styles.sessionCard}>
-            <Text style={styles.sessionLabel}>Today&apos;s session</Text>
-            <Text style={styles.sessionName}>Ready when you are</Text>
-            <PrimaryButton label="Start workout" onPress={startWorkout} style={styles.primaryBtn} />
-            <Text style={styles.microcopy}>Session lives in React state only until we add the backend.</Text>
-          </Card>
-        ) : (
-          <>
-            <Card style={styles.summaryCard}>
-              <Text style={styles.summaryLine}>
-                <Text style={styles.summaryStrong}>{exercises.length}</Text> exercises ·{' '}
-                <Text style={styles.summaryStrong}>{setCount}</Text> sets
-              </Text>
-              <View style={styles.summaryActions}>
-                <PrimaryButton
-                  label="Add exercise"
-                  variant="outline"
-                  onPress={openAddExercise}
-                  style={styles.summaryBtn}
-                />
-                <Pressable
-                  onPress={() => {
-                    setSessionStarted(false);
-                    setExercises([]);
-                  }}
-                  accessibilityRole="button"
-                  hitSlop={8}
-                >
-                  <Text style={styles.endLink}>End session</Text>
-                </Pressable>
-              </View>
-            </Card>
-
-            {exercises.length === 0 ? (
-              <Card style={styles.emptyCard}>
-                <Text style={styles.emptyTitle}>No exercises yet</Text>
-                <Text style={styles.emptyBody}>Add one to start logging sets.</Text>
-                <PrimaryButton label="Add exercise" onPress={openAddExercise} />
+          <Text style={styles.programsHeading}>Your programs</Text>
+          {PERSONAL_ROUTINES.map((r) => (
+            <Pressable
+              key={r.id}
+              onPress={() => setRoutineViewer(r)}
+              accessibilityRole="button"
+              style={({ pressed }) => [pressed && styles.routineCardPressed]}
+            >
+              <Card style={styles.routineCard}>
+                <View style={styles.routineCardTop}>
+                  <Text style={styles.routineTitle}>{r.title}</Text>
+                  {r.dayLabel ? <Text style={styles.routineDay}>{r.dayLabel}</Text> : null}
+                </View>
+                <Text style={styles.routineMeta}>
+                  {flattenRoutineItems(r).length} exercises · tap to view
+                </Text>
               </Card>
-            ) : (
-              <FlatList
-                data={exercises}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={styles.list}
-                keyboardShouldPersistTaps="handled"
-                renderItem={({ item: ex }) => (
-                  <Card style={styles.exCard}>
+            </Pressable>
+          ))}
+
+          {!sessionStarted ? (
+            <Card style={styles.sessionCard}>
+              <Text style={styles.sessionLabel}>Today&apos;s session</Text>
+              <Text style={styles.sessionName}>Ready when you are</Text>
+              <PrimaryButton label="Start workout" onPress={startWorkout} style={styles.primaryBtn} />
+              <Text style={styles.microcopy}>Session stays on the device until we add sync.</Text>
+            </Card>
+          ) : (
+            <>
+              <Card style={styles.summaryCard}>
+                <Text style={styles.summaryLine}>
+                  <Text style={styles.summaryStrong}>{exercises.length}</Text> exercises ·{' '}
+                  <Text style={styles.summaryStrong}>{setCount}</Text> sets
+                </Text>
+                <View style={styles.summaryActions}>
+                  <PrimaryButton
+                    label="Add exercise"
+                    variant="outline"
+                    onPress={openAddExercise}
+                    style={styles.summaryBtn}
+                  />
+                  <Pressable
+                    onPress={() => {
+                      setSessionStarted(false);
+                      setExercises([]);
+                    }}
+                    accessibilityRole="button"
+                    hitSlop={8}
+                  >
+                    <Text style={styles.endLink}>End session</Text>
+                  </Pressable>
+                </View>
+              </Card>
+
+              {exercises.length === 0 ? (
+                <Card style={styles.emptyCard}>
+                  <Text style={styles.emptyTitle}>No exercises yet</Text>
+                  <Text style={styles.emptyBody}>
+                    Open a program above and use &quot;Add all to session&quot;, or add one by one.
+                  </Text>
+                  <PrimaryButton label="Add exercise" onPress={openAddExercise} />
+                </Card>
+              ) : (
+                exercises.map((ex) => (
+                  <Card key={ex.id} style={styles.exCard}>
                     <TextInput
                       value={ex.name}
                       onChangeText={(t) => updateExerciseName(ex.id, t)}
@@ -215,11 +257,11 @@ export function WorkoutTrackerScreen() {
                       </Pressable>
                     </View>
                   </Card>
-                )}
-              />
-            )}
-          </>
-        )}
+                ))
+              )}
+            </>
+          )}
+        </ScrollView>
       </KeyboardAvoidingView>
 
       <Modal
@@ -252,6 +294,58 @@ export function WorkoutTrackerScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={!!routineViewer}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRoutineViewer(null)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setRoutineViewer(null)}>
+          <Pressable style={styles.routineModalShell} onPress={(e) => e.stopPropagation()}>
+            {routineViewer ? (
+              <>
+                <Text style={styles.routineModalTitle}>{routineViewer.title}</Text>
+                {routineViewer.dayLabel ? (
+                  <Text style={styles.routineModalDay}>{routineViewer.dayLabel}</Text>
+                ) : null}
+                <ScrollView
+                  style={styles.routineModalScroll}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator
+                >
+                  {routineViewer.blocks.map((block) => (
+                    <View key={block.heading} style={styles.routineBlock}>
+                      <Text style={styles.routineBlockHeading}>{block.heading}</Text>
+                      {block.items.map((item, i) => (
+                        <View key={`${block.heading}-${i}`} style={styles.routineItemRow}>
+                          <Text style={styles.routineItemIndex}>{i + 1}.</Text>
+                          <Text style={styles.routineItemText}>{item}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ))}
+                </ScrollView>
+                {sessionStarted ? (
+                  <PrimaryButton
+                    label="Add all to session"
+                    onPress={addRoutineExercisesToSession}
+                    style={styles.routineModalPrimary}
+                  />
+                ) : (
+                  <Text style={styles.routineModalHint}>Start a workout to load this list into your log.</Text>
+                )}
+                <PrimaryButton
+                  label="Close"
+                  variant="outline"
+                  onPress={() => setRoutineViewer(null)}
+                  style={styles.routineModalClose}
+                />
+              </>
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -265,6 +359,9 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
+  scrollContent: {
+    paddingBottom: spacing.xxl,
+  },
   title: {
     fontSize: 26,
     fontWeight: '800',
@@ -275,9 +372,45 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     lineHeight: 20,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  programsHeading: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  routineCard: {
+    marginBottom: spacing.sm,
+  },
+  routineCardPressed: {
+    opacity: 0.92,
+  },
+  routineCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: spacing.md,
+  },
+  routineTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.text,
+    flex: 1,
+  },
+  routineDay: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primaryDark,
+    textTransform: 'capitalize',
+  },
+  routineMeta: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
   },
   sessionCard: {
+    marginTop: spacing.md,
     marginBottom: spacing.lg,
     gap: spacing.sm,
   },
@@ -343,12 +476,8 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.sm,
   },
-  list: {
-    paddingBottom: spacing.xxl,
-    gap: spacing.md,
-  },
   exCard: {
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
     gap: spacing.sm,
   },
   exNameInput: {
@@ -453,6 +582,76 @@ const styles = StyleSheet.create({
   },
   modalBtn: {
     flex: 1,
+    minHeight: 48,
+  },
+  routineModalShell: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    maxHeight: '88%',
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
+  },
+  routineModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  routineModalDay: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primaryDark,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+    textTransform: 'capitalize',
+  },
+  routineModalScroll: {
+    maxHeight: 340,
+    marginBottom: spacing.md,
+  },
+  routineBlock: {
+    marginBottom: spacing.md,
+  },
+  routineBlockHeading: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: spacing.sm,
+  },
+  routineItemRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  routineItemIndex: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textMuted,
+    width: 28,
+  },
+  routineItemText: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.text,
+    lineHeight: 22,
+  },
+  routineModalPrimary: {
+    marginBottom: spacing.sm,
+  },
+  routineModalHint: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+    lineHeight: 20,
+  },
+  routineModalClose: {
     minHeight: 48,
   },
 });

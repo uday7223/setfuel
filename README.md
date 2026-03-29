@@ -50,6 +50,7 @@ setfuel/
     ├── app.json              # Expo app name/slug: SetFuel / setfuel
     ├── assets/
     └── src/
+        ├── data/             # Personal routines / static reference data
         ├── components/ui/    # Reusable presentation components
         ├── context/          # Auth (placeholder until Google + API)
         ├── navigation/       # Root stack + main tabs + route types
@@ -68,6 +69,7 @@ setfuel/
 | **1** | Expo TS app, navigation shell, Login + Home + Workout + Diet UIs, theme tokens, auth placeholder |
 | **1b** | Downgraded to **Expo SDK 54** so physical devices using Play Store Expo Go avoid “requires newer Expo Go” (SDK 55 mismatch) |
 | **2** | **Workout**: start session, add exercises (modal), log sets (reps / kg), remove sets/exercises · **Diet**: log meal / quick-add modal, live calorie total, remove meal · **`TextField`** UI primitive |
+| **3** | **Personal programs** in `mobile/src/data/personalRoutines.ts` (chest Mon, chest 2.0, back Wed, shoulders Thu, arms, legs Sat) — cards on Workout tab, detail modal, **Add all to session** |
 
 ## Key decisions
 
