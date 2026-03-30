@@ -6,7 +6,8 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "build:android:preview": "eas build --platform android --profile preview"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@types/invariant": "^2.2.37",
     "@types/react": "~19.1.10",
+    "eas-cli": "^18.4.0",
     "typescript": "~5.9.2"
   },
   "private": true

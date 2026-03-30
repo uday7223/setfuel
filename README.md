@@ -38,6 +38,33 @@ cd mobile
 npm run android
 ```
 
+## Standalone Android build (gym / no laptop)
+
+Expo Go and `expo start` need your computer. For **tomorrow’s workout** (or any time offline), install a **preview APK**: it is a real **SetFuel** app with your JS bundle baked in—open it like any other app; no Metro, no Expo Go.
+
+**One-time setup**
+
+1. Create a free account at [expo.dev](https://expo.dev) if you don’t have one.
+2. From `mobile/`:
+
+```bash
+cd mobile
+npm install
+npx eas login
+npm run build:android:preview
+```
+
+3. The CLI may ask to **link this folder to an Expo project** (creates `extra.eas.projectId` in `app.json`)—accept.
+4. When the **cloud build** finishes (~10–20+ minutes on free tier), open the build page link in the terminal, **download the `.apk`**, and install it on your phone (Android may require **Install unknown apps** for your browser or Files app).
+5. Launch **SetFuel** from the app drawer—not Expo Go.
+
+**Config in this repo**
+
+- `mobile/eas.json` — `preview` profile builds an **APK** (`internal` distribution) for easy sideloading.
+- `npm run build:android:preview` runs `eas build --platform android --profile preview`.
+
+Bump `expo.android.versionCode` in `app.json` before each **new** store-style upload; for casual sideload previews you can reuse builds or bump when Android complains about same version.
+
 ## Folder structure
 
 ```text
@@ -46,6 +73,7 @@ setfuel/
 ├── backend/                  # Node + Postgres (coming later)
 │   └── README.md
 └── mobile/                   # Expo React Native app
+    ├── eas.json              # EAS Build profiles (preview APK, production AAB)
     ├── App.tsx               # SafeAreaProvider, AuthProvider, NavigationContainer
     ├── app.json              # Expo app name/slug: SetFuel / setfuel
     ├── assets/
@@ -70,6 +98,7 @@ setfuel/
 | **1b** | Downgraded to **Expo SDK 54** so physical devices using Play Store Expo Go avoid “requires newer Expo Go” (SDK 55 mismatch) |
 | **2** | **Workout**: start session, add exercises (modal), log sets (reps / kg), remove sets/exercises · **Diet**: log meal / quick-add modal, live calorie total, remove meal · **`TextField`** UI primitive |
 | **3** | **Personal programs** in `mobile/src/data/personalRoutines.ts` (chest Mon, chest 2.0, back Wed, shoulders Thu, arms, legs Sat) — cards on Workout tab, detail modal, **Add all to session** |
+| **4** | **EAS preview APK** — `eas.json` + `build:android:preview` for standalone install (no laptop / no Expo Go at the gym) |
 
 ## Key decisions
 
