@@ -104,6 +104,23 @@ Use this when you’ve changed the app and want a **fresh APK** on your Android 
    - Launch the **SetFuel** icon directly.
    - No `expo start`, no laptop, no Expo Go required.
 
+### Control app/build naming
+
+If you want a predictable naming strategy like **SetFuel vX.Y.Z**, these are the fields to control:
+
+- `mobile/app.json` → `expo.name`  
+  Controls the installed app name shown under the icon (example: `SetFuel`).
+- `mobile/app.json` → `expo.version`  
+  Public version label (example: `1.0.1`).
+- `mobile/app.json` → `expo.android.versionCode`  
+  Android internal integer that must increase on each upgradable release.
+
+Recommended approach:
+
+- Keep `expo.name` stable as **SetFuel** for cleaner branding.
+- Track version in `expo.version` and `versionCode`.
+- Use `RELEASE_NOTES.md` for human-readable release naming/history.
+
 Bump `expo.android.versionCode` in `app.json` before each **new** store-style upload; for casual sideload previews you can reuse builds or bump when Android complains about same version.
 
 ## Folder structure
@@ -111,6 +128,7 @@ Bump `expo.android.versionCode` in `app.json` before each **new** store-style up
 ```text
 setfuel/
 ├── README.md                 # This file — setup, features, structure, decisions
+├── RELEASE_NOTES.md          # Versioned release history and publish notes
 ├── backend/                  # Node + Postgres (coming later)
 │   └── README.md
 └── mobile/                   # Expo React Native app
