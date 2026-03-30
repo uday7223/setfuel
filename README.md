@@ -63,6 +63,47 @@ npm run build:android:preview
 - `mobile/eas.json` — `preview` profile builds an **APK** (`internal` distribution) for easy sideloading.
 - `npm run build:android:preview` runs `eas build --platform android --profile preview`.
 
+### Release workflow: new Android preview build
+
+Use this when you’ve changed the app and want a **fresh APK** on your Android phone.
+
+1. **Make your code changes**
+   - Edit files under `mobile/src/**` as usual.
+   - Verify locally in Expo Go with:
+     ```bash
+     cd mobile
+     npx expo start
+     ```
+2. **Bump version for a real release (optional for personal use)**
+   - For Play Store-style releases, bump both:
+     - `expo.version` (e.g. `1.0.1`) in `mobile/app.json`
+     - `expo.android.versionCode` (integer, e.g. `2`) in `mobile/app.json`
+   - For simple sideload APKs just for you, you can often reuse the same version; bump when Android refuses to install over an existing build.
+3. **Commit (recommended)**
+   - From repo root:
+     ```bash
+     git status
+     git add .
+     git commit -m "feat: describe your change"
+     git push
+     ```
+4. **Kick off a new preview build**
+   - From `mobile/`:
+     ```bash
+     cd mobile
+     npm install        # only if deps changed or on a new machine
+     npx eas login      # only needed once per machine/account
+     npm run build:android:preview
+     ```
+   - Wait for EAS to finish and give you a **build URL**.
+5. **Install on your Android phone**
+   - Open the build page from the CLI link or from [expo.dev](https://expo.dev) → project **setfuel** → **Builds**.
+   - Download the `.apk` on your phone and install it (enable **Install unknown apps** for your browser/Files if Android asks).
+   - If install fails due to version, uninstall the previous SetFuel build, or bump `versionCode` and rebuild.
+6. **Use the app at the gym**
+   - Launch the **SetFuel** icon directly.
+   - No `expo start`, no laptop, no Expo Go required.
+
 Bump `expo.android.versionCode` in `app.json` before each **new** store-style upload; for casual sideload previews you can reuse builds or bump when Android complains about same version.
 
 ## Folder structure
