@@ -16,9 +16,14 @@ setfuel/
 ├── RELEASE_NOTES.md
 ├── backend/             # Placeholder — API + Postgres (future)
 └── mobile/              # Expo SDK 54 + React Native + TypeScript
-    ├── App.tsx          # Root providers + navigation container
+    ├── App.tsx          # Root providers + navigation container (imports `global.css`)
     ├── index.ts         # Expo registerRootComponent → App
     ├── app.json         # Expo config (name, slug, Android package, EAS projectId)
+    ├── babel.config.js  # `nativewind` + `jsxImportSource: nativewind`, Reanimated plugin
+    ├── metro.config.js  # `withNativeWind` (Tailwind / CSS entry)
+    ├── tailwind.config.js
+    ├── global.css       # `@tailwind` directives (NativeWind)
+    ├── nativewind-env.d.ts
     ├── eas.json         # EAS Build profiles (e.g. preview APK)
     ├── assets/
     └── src/
@@ -39,6 +44,7 @@ setfuel/
 | Navigation | `@react-navigation/native`, native stack, bottom tabs |
 | Icons | `@expo/vector-icons` (Ionicons on tabs) |
 | Safe area | `react-native-safe-area-context` |
+| Styling | **NativeWind v4** (Tailwind CSS utilities via `className`) + `react-native-reanimated` (required peer); see `tailwind.config.js` / `global.css` |
 | Global UI state | `AuthContext` only |
 
 ## Bootstrap chain
@@ -92,13 +98,14 @@ flowchart TB
 
 ## UI system
 
-- **Tokens**: `src/theme/colors.ts`, `src/theme/spacing.ts`, re-exported from `src/theme/index.ts`.
+- **Tokens**: `src/theme/colors.ts`, `src/theme/spacing.ts`, re-exported from `src/theme/index.ts` (used by existing `StyleSheet` code).
+- **Tailwind theme**: `mobile/tailwind.config.js` extends `theme.colors` with the same palette (e.g. `bg-background`, `text-primary`, `border-border`) for `className` on RN components.
 - **Primitives** (`src/components/ui/`):
   - `Card` — surface, border, light shadow
   - `PrimaryButton` — variants `primary` | `outline` | `google`, loading state
   - `TextField` — label + styled `TextInput`
 
-**Styling**: React Native `StyleSheet` in screen/component files — no Tailwind/CSS-in-JS library in this repo.
+**Styling**: Prefer **NativeWind** (`className="..."`) for new UI; legacy screens may still use `StyleSheet` until migrated. After changing Tailwind config, restart Metro with cache clear (`npx expo start -c`) if styles do not update.
 
 ## Screens (by domain)
 
