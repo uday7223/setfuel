@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
   summaryKcal: {
     fontSize: 32,
     fontWeight: '800',
-    color: colors.primaryDark,
+    color: colors.tertiary,
     marginTop: spacing.xs,
   },
   summaryHint: {
@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
   mealKcal: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.primaryDark,
+    color: colors.tertiary,
   },
   mealRemove: {
     fontSize: 16,
@@ -281,16 +281,14 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    backgroundColor: colors.scrim,
     justifyContent: 'center',
     padding: spacing.lg,
   },
   modalCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: 24,
     padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   modalTitle: {
     fontSize: 18,

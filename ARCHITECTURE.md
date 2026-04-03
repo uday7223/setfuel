@@ -98,8 +98,11 @@ flowchart TB
 
 ## UI system
 
-- **Tokens**: `src/theme/colors.ts`, `src/theme/spacing.ts`, re-exported from `src/theme/index.ts` (used by existing `StyleSheet` code).
-- **Tailwind theme**: `mobile/tailwind.config.js` extends `theme.colors` with the same palette (e.g. `bg-background`, `text-primary`, `border-border`) for `className` on RN components.
+- **Global theme (single source of truth)**: `src/theme/designTokens.json` — all color hex values. **`colors.ts`** maps them to the `colors` object used in `StyleSheet` code (semantic names + a few legacy aliases like `background`, `text`, `border`). **`tailwind.config.js`** reads the same JSON so NativeWind utilities stay in sync.
+- **Typography scale (Stitch)**: `src/theme/typography.ts` — Inter / Manrope roles and sizes; wire `expo-font` when you load those families.
+- **Spacing**: `src/theme/spacing.ts`, re-exported from `src/theme/index.ts`.
+- **Barrel**: `src/theme/index.ts` exports `colors`, `spacing`, `typography`, and `designTokens`.
+- **Tailwind**: use semantic names (e.g. `bg-surface`, `text-on-surface`, `bg-surface-container-lowest`) per `tailwind.config.js`.
 - **Primitives** (`src/components/ui/`):
   - `Card` — surface, border, light shadow
   - `PrimaryButton` — variants `primary` | `outline` | `google`, loading state

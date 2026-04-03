@@ -1,22 +1,40 @@
 /** @type {import('tailwindcss').Config} */
+const { colors: dt } = require('./src/theme/designTokens.json');
+
 module.exports = {
   content: ['./App.tsx', './index.ts', './src/**/*.{js,jsx,ts,tsx}'],
   presets: [require('nativewind/preset')],
   theme: {
     extend: {
+      borderRadius: {
+        xl: '24px',
+        '2xl': '24px',
+      },
       colors: {
-        background: '#F0F4F8',
-        surface: '#FFFFFF',
-        'surface-muted': '#E8EEF4',
-        text: '#0F172A',
-        'text-secondary': '#64748B',
-        'text-muted': '#94A3B8',
-        primary: '#0D9488',
-        'primary-dark': '#0F766E',
-        'primary-muted': '#CCFBF1',
-        border: '#E2E8F0',
-        danger: '#DC2626',
-        'google-blue': '#4285F4',
+        primary: dt.primary,
+        'primary-container': dt.primaryContainer,
+        surface: dt.surface,
+        'surface-container-low': dt.surfaceContainerLow,
+        'surface-container-lowest': dt.surfaceContainerLowest,
+        'surface-container-highest': dt.surfaceContainerHighest,
+        secondary: dt.secondary,
+        'secondary-container': dt.secondaryContainer,
+        'on-secondary-container': dt.onSecondaryContainer,
+        tertiary: dt.tertiary,
+        'on-surface': dt.onSurface,
+        'on-primary': dt.onPrimary,
+        'outline-variant': dt.outlineVariant,
+        'outline-ghost': dt.outlineGhost,
+        danger: dt.danger,
+        'google-blue': dt.googleBlue,
+        'text-secondary': dt.textSecondary,
+        'text-muted': dt.textMuted,
+        'primary-muted': dt.primaryMuted,
+        scrim: dt.scrim,
+        // Legacy utility names (align with `colors.ts` aliases)
+        background: dt.surface,
+        text: dt.onSurface,
+        border: dt.outlineGhost,
       },
     },
   },

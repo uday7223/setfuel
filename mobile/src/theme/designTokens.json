@@ -1,0 +1,25 @@
+{
+  "colors": {
+    "primary": "#00685f",
+    "primaryContainer": "#008378",
+    "surface": "#f6fafe",
+    "surfaceContainerLow": "#f0f4f8",
+    "surfaceContainerLowest": "#ffffff",
+    "surfaceContainerHighest": "#dbe5e3",
+    "secondary": "#3f6560",
+    "secondaryContainer": "#d4e5e2",
+    "onSecondaryContainer": "#1a2e2c",
+    "tertiary": "#924628",
+    "onSurface": "#171c1f",
+    "onPrimary": "#ffffff",
+    "outlineVariant": "#bcc9c6",
+    "danger": "#dc2626",
+    "googleBlue": "#4285f4",
+    "textSecondary": "#5c6664",
+    "textMuted": "#7a8a87",
+    "primaryMuted": "#ccebe7",
+    "scrim": "rgba(23, 28, 31, 0.45)",
+    "ambientShadow": "rgba(23, 28, 31, 0.04)",
+    "outlineGhost": "rgba(188, 201, 198, 0.15)"
+  }
+}
