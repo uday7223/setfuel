@@ -125,9 +125,12 @@ Bump `expo.android.versionCode` in `app.json` before each **new** store-style up
 
 ## Folder structure
 
+For navigation, state, and how to implement new features, see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
+
 ```text
 setfuel/
 ├── README.md                 # This file — setup, features, structure, decisions
+├── ARCHITECTURE.md           # Project architecture — nav, state, feature playbook
 ├── RELEASE_NOTES.md          # Versioned release history and publish notes
 ├── backend/                  # Node + Postgres (coming later)
 │   └── README.md
