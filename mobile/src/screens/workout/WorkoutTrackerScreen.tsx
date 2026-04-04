@@ -30,6 +30,18 @@ import {
 } from '../../services/routinesStorage';
 import { dashboard, spacing } from '../../theme';
 
+function reportSampleProgramsError(err: unknown) {
+  const msg = err instanceof Error ? err.message : 'Please try again.';
+  console.error('[SetFuel] sample programs', err);
+  if (Platform.OS === 'web') {
+    if (typeof globalThis.alert === 'function') {
+      globalThis.alert(`Could not load sample programs.\n\n${msg}`);
+    }
+  } else {
+    Alert.alert('Could not load sample programs', msg);
+  }
+}
+
 function cloneRoutine(r: PersonalRoutine): PersonalRoutine {
   return JSON.parse(JSON.stringify(r)) as PersonalRoutine;
 }
@@ -284,23 +296,42 @@ export function WorkoutTrackerScreen() {
     openRoutineModal(created, true);
   }, [programs, createBlankProgram, openRoutineModal]);
 
+  /** Loads PERSONAL_ROUTINES from code into storage + React state (see routinesStorage). */
+  const applyBundledSamplePrograms = useCallback(() => {
+    resetRoutinesToDefaults()
+      .then((next) => {
+        setPrograms(next);
+        setRoutineModal(null);
+      })
+      .catch(reportSampleProgramsError);
+  }, []);
+
+  /** Alert dismiss + async storage can race on native; web has no Alert implementation at all. */
+  const scheduleApplyBundledSamples = useCallback(() => {
+    setTimeout(() => {
+      applyBundledSamplePrograms();
+    }, 0);
+  }, [applyBundledSamplePrograms]);
+
   const confirmLoadSamplePrograms = useCallback(() => {
+    if (Platform.OS === 'web') {
+      const ok =
+        typeof globalThis.confirm === 'function' &&
+        globalThis.confirm(
+          'Use sample programs?\n\nThis adds the default training split from the app. You can edit or delete programs anytime.',
+        );
+      if (ok) scheduleApplyBundledSamples();
+      return;
+    }
     Alert.alert(
       'Use sample programs?',
       'This adds the default training split from the app. You can edit or delete programs anytime.',
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Add samples',
-          onPress: async () => {
-            const next = await resetRoutinesToDefaults();
-            setPrograms(next);
-            setRoutineModal(null);
-          },
-        },
+        { text: 'Add samples', onPress: scheduleApplyBundledSamples },
       ],
     );
-  }, []);
+  }, [scheduleApplyBundledSamples]);
 
   const confirmDeleteProgram = useCallback(() => {
     if (!routineModal?.editMode) return;
@@ -347,23 +378,24 @@ export function WorkoutTrackerScreen() {
   }, []);
 
   const confirmResetAllPrograms = useCallback(() => {
+    if (Platform.OS === 'web') {
+      const ok =
+        typeof globalThis.confirm === 'function' &&
+        globalThis.confirm(
+          'Replace with sample programs?\n\nThis replaces your current programs with the built-in sample split. Your edits will be lost.',
+        );
+      if (ok) scheduleApplyBundledSamples();
+      return;
+    }
     Alert.alert(
       'Replace with sample programs?',
       'This replaces your current programs with the built-in sample split. Your edits will be lost.',
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: async () => {
-            const next = await resetRoutinesToDefaults();
-            setPrograms(next);
-            setRoutineModal(null);
-          },
-        },
+        { text: 'Reset', style: 'destructive', onPress: scheduleApplyBundledSamples },
       ],
     );
-  }, []);
+  }, [scheduleApplyBundledSamples]);
 
   const openExerciseMenu = useCallback((exerciseId: string) => {
     Alert.alert('Exercise', undefined, [
