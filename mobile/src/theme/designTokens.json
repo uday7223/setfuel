@@ -59,6 +59,11 @@
     "tabInactive": "#94a3b8",
     "tabActive": "#00685f",
     "tabActivePill": "rgba(0, 104, 95, 0.1)",
-    "outlineGhost15": "rgba(42, 58, 72, 0.15)"
+    "outlineGhost15": "rgba(42, 58, 72, 0.15)",
+    "surfaceContainerLowest": "#0a0e1a",
+    "outline": "#4a6070",
+    "onError": "#1a0000",
+    "setRowBg": "rgba(17, 24, 40, 0.45)",
+    "programCardSurface": "#161d27"
   }
 }
