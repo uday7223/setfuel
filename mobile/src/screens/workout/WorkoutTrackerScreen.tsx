@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,7 +13,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -22,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ExerciseEntry, PersonalRoutine, SetEntry } from '../../types';
 import { localId } from '../../services/api';
 import { PLACEHOLDER_AVATAR } from '../../services/userService';
+import { AppHeader } from '../../components/ui/AppHeader';
 import {
   flattenRoutineItems,
   PERSONAL_ROUTINES,
@@ -126,14 +125,11 @@ export function WorkoutTrackerScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      StatusBar.setBarStyle('dark-content');
+      StatusBar.setBarStyle('light-content');
       if (Platform.OS === 'android') {
-        StatusBar.setBackgroundColor(d.headerSolid);
+        StatusBar.setBackgroundColor(d.background);
       }
-      return () => {
-        StatusBar.setBarStyle('dark-content');
-      };
-    }, [d.headerSolid]),
+    }, [d.background]),
   );
 
   const startWorkout = useCallback(() => {
@@ -241,36 +237,9 @@ export function WorkoutTrackerScreen() {
     ]);
   }, [removeExercise]);
 
-  const headerChrome = (
-    <View style={styles.headerRow}>
-      <View style={styles.headerLeft}>
-        <View style={[styles.avatarWrap, { backgroundColor: d.primaryFixed }]}>
-          <Image source={{ uri: PLACEHOLDER_AVATAR }} style={styles.avatarImg} resizeMode="cover" />
-        </View>
-        <Text style={[styles.wordmark, { color: d.brandTeal }]}>SetFuel</Text>
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Notifications"
-        hitSlop={12}
-        style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.7 }]}
-      >
-        <Ionicons name="notifications-outline" size={24} color={d.primary} />
-      </Pressable>
-    </View>
-  );
-
   return (
-    <View style={[styles.root, { backgroundColor: d.surfaceContainerLow }]}>
-      {Platform.OS === 'ios' ? (
-        <BlurView intensity={55} tint="light" style={[styles.headerBlur, { paddingTop: insets.top }]}>
-          {headerChrome}
-        </BlurView>
-      ) : (
-        <View style={[styles.headerBlur, { paddingTop: insets.top, backgroundColor: d.headerSolid }]}>
-          {headerChrome}
-        </View>
-      )}
+    <View style={[styles.root, { backgroundColor: d.background }]}>
+      <AppHeader avatarUri={PLACEHOLDER_AVATAR} topInset={insets.top} />
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -599,43 +568,6 @@ export function WorkoutTrackerScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-  },
-  headerBlur: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    overflow: 'hidden',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm + 4,
-  },
-  avatarWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  avatarImg: {
-    width: '100%',
-    height: '100%',
-  },
-  wordmark: {
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: -0.6,
-  },
-  iconBtn: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 24,
   },
   flex: {
     flex: 1,

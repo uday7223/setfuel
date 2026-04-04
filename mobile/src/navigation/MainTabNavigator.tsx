@@ -1,8 +1,9 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
 import { PlatformPressable } from '@react-navigation/elements';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { DietTrackerScreen } from '../screens/diet/DietTrackerScreen';
 import { HomeScreen } from '../screens/home/HomeScreen';
@@ -11,43 +12,46 @@ import { dashboard } from '../theme';
 import type { MainTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
+const d = dashboard;
 
 function PillTabBarButton({ style, accessibilityState, ...rest }: BottomTabBarButtonProps) {
   const focused = accessibilityState?.selected ?? false;
-  const d = dashboard;
   return (
     <PlatformPressable
       {...rest}
       accessibilityState={accessibilityState}
-      style={[styles.tabBtn, style, focused && { backgroundColor: d.tabActivePill, borderRadius: 20 }]}
+      style={[
+        styles.tabBtn,
+        style,
+        focused && styles.tabBtnActive,
+      ]}
     />
   );
 }
 
-export function MainTabNavigator() {
-  const d = dashboard;
+function TabBarBackground() {
+  if (Platform.OS === 'ios') {
+    return (
+      <BlurView
+        intensity={60}
+        tint="dark"
+        style={StyleSheet.absoluteFill}
+      />
+    );
+  }
+  return <View style={[StyleSheet.absoluteFill, { backgroundColor: `${d.background}e6` }]} />;
+}
 
+export function MainTabNavigator() {
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: d.tabActive,
-        tabBarInactiveTintColor: d.tabInactive,
+        tabBarActiveTintColor: d.primary,
+        tabBarInactiveTintColor: d.onSurfaceVariant,
         tabBarLabelStyle: styles.tabLabel,
-        tabBarStyle: {
-          backgroundColor: d.tabBarBg,
-          borderTopWidth: 0,
-          borderTopLeftRadius: 24,
-          borderTopRightRadius: 24,
-          elevation: 20,
-          shadowColor: '#171c1f',
-          shadowOffset: { width: 0, height: -8 },
-          shadowOpacity: 0.06,
-          shadowRadius: 24,
-          paddingTop: 10,
-          paddingHorizontal: 10,
-          height: 72,
-        },
+        tabBarStyle: styles.tabBar,
+        tabBarBackground: () => <TabBarBackground />,
         tabBarButton: (props) => <PillTabBarButton {...props} />,
       }}
     >
@@ -86,6 +90,25 @@ export function MainTabNavigator() {
 }
 
 const styles = StyleSheet.create({
+  tabBar: {
+    backgroundColor: 'transparent',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    elevation: 0,
+    shadowColor: '#171c1f',
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 24,
+    paddingTop: 6,
+    paddingHorizontal: 10,
+    height: 80,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
   tabBtn: {
     flex: 1,
     alignItems: 'center',
@@ -94,10 +117,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     marginVertical: 4,
   },
+  tabBtnActive: {
+    backgroundColor: `${d.primary}1a`,
+    borderRadius: 16,
+  },
   tabLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
-    letterSpacing: 0.8,
+    letterSpacing: 1.5,
     marginTop: 4,
   },
 });

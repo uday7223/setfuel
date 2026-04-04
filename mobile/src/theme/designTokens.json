@@ -47,6 +47,8 @@
     "tertiary": "#c8a0f0",
     "card": "#0a0e1a",
     "surfaceContainerLow": "#111828",
+    "surfaceContainerHigh": "#1a2438",
+    "surfaceContainer": "#141c2e",
     "surfaceContainerHighest": "#202c42",
     "error": "#ff6b6b",
     "outlineVariant": "#2a3a48",
@@ -64,6 +66,9 @@
     "outline": "#4a6070",
     "onError": "#1a0000",
     "setRowBg": "rgba(17, 24, 40, 0.45)",
-    "programCardSurface": "#161d27"
+    "programCardSurface": "#161d27",
+    "glassCard": "rgba(20, 28, 46, 0.6)",
+    "glassCardBorder": "rgba(125, 211, 252, 0.1)",
+    "errorContainer": "rgba(61, 20, 20, 0.2)"
   }
 }

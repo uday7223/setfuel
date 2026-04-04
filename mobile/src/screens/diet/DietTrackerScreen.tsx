@@ -13,13 +13,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Macros, Meal } from '../../types';
 import { mealService, userService } from '../../services';
+import { AppHeader } from '../../components/ui/AppHeader';
 import { dashboard, spacing } from '../../theme';
 
 const d = dashboard;
@@ -110,25 +110,6 @@ export function DietTrackerScreen() {
 
   const kcalValid = kcalText.trim() !== '' && Number.isFinite(parseFloat(kcalText.replace(',', '.')));
 
-  /* ── Header chrome (dark with blur) ─────────────────── */
-  const headerChrome = (
-    <View style={styles.headerRow}>
-      <View style={styles.headerLeft}>
-        <View style={styles.avatarWrap}>
-          {avatarUri && <Image source={{ uri: avatarUri }} style={styles.avatarImg} resizeMode="cover" />}
-        </View>
-        <Text style={[styles.wordmark, { color: d.primary }]}>SetFuel</Text>
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Notifications"
-        hitSlop={12}
-        style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.7 }]}
-      >
-        <Ionicons name="notifications-outline" size={24} color={d.primary} />
-      </Pressable>
-    </View>
-  );
 
   /* ── Meal row renderer ──────────────────────────────── */
   const renderMeal = useCallback(
@@ -186,18 +167,7 @@ export function DietTrackerScreen() {
 
   return (
     <View style={styles.root}>
-      {/* Header with blur */}
-      {Platform.OS === 'ios' ? (
-        <BlurView intensity={55} tint="dark" style={[styles.headerBlur, { paddingTop: insets.top }]}>
-          {headerChrome}
-        </BlurView>
-      ) : (
-        <View
-          style={[styles.headerBlur, { paddingTop: insets.top, backgroundColor: `${d.background}cc` }]}
-        >
-          {headerChrome}
-        </View>
-      )}
+      <AppHeader avatarUri={avatarUri} topInset={insets.top} />
 
       {loading ? (
         <View style={styles.loader}>
@@ -375,45 +345,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-
-  /* ── Header ────────────────────────────────────── */
-  headerBlur: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    overflow: 'hidden',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  avatarWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: d.surfaceContainerHigh,
-    borderWidth: 1,
-    borderColor: 'rgba(42, 58, 72, 0.3)',
-  },
-  avatarImg: { width: '100%', height: '100%' },
-  wordmark: {
-    fontSize: 24,
-    fontWeight: '900',
-    letterSpacing: -0.6,
-  },
-  iconBtn: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 24,
   },
 
   /* ── List content ──────────────────────────────── */
