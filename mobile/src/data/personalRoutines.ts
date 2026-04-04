@@ -3,18 +3,9 @@
  * Wording normalized slightly (e.g. barbell/dumbbell spelling) but exercises match your plan.
  */
 
-export type RoutineBlock = {
-  heading: string;
-  items: string[];
-};
+import type { PersonalRoutine, RoutineBlock } from '../types';
 
-export type PersonalRoutine = {
-  id: string;
-  title: string;
-  /** e.g. "Monday" — optional second line on cards */
-  dayLabel?: string;
-  blocks: RoutineBlock[];
-};
+export type { PersonalRoutine, RoutineBlock };
 
 export const PERSONAL_ROUTINES: PersonalRoutine[] = [
   {

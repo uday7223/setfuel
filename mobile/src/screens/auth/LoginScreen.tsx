@@ -1,48 +1,108 @@
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useCallback } from 'react';
+import {
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { PrimaryButton } from '../../components/ui/PrimaryButton';
 import { useAuth } from '../../context/AuthContext';
-import { colors, spacing } from '../../theme';
+import { authLanding, spacing } from '../../theme';
 
 /**
- * UI-only “Google” entry — no OAuth yet.
- * Same layout pattern you’ll keep when swapping the handler for expo-auth-session / native Google Sign-In.
+ * Dark landing / auth screen — Stitch “Mindful Kinetic” (tonal layering, editorial type).
+ * Google CTA is still a placeholder until OAuth + backend.
  */
 export function LoginScreen() {
   const { signInWithGooglePlaceholder } = useAuth();
+  const a = authLanding;
+
+  useFocusEffect(
+    useCallback(() => {
+      StatusBar.setBarStyle('light-content');
+      if (Platform.OS === 'android') {
+        StatusBar.setBackgroundColor(a.canvas);
+      }
+      return () => {
+        StatusBar.setBarStyle('dark-content');
+        if (Platform.OS === 'android') {
+          StatusBar.setBackgroundColor('#ffffff');
+        }
+      };
+    }, [a.canvas]),
+  );
+
+  const openUrl = useCallback((url: string) => {
+    void Linking.openURL(url);
+  }, []);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <View style={styles.hero}>
-        <View style={styles.logoMark}>
-          <Text style={styles.logoLetter}>S</Text>
-        </View>
-        <Text style={styles.title}>SetFuel</Text>
-        <Text style={styles.tagline}>Workouts and meals, one calm place.</Text>
-      </View>
-
-      <View style={styles.panel}>
-        <Text style={styles.welcome}>Welcome back</Text>
-        <Text style={styles.hint}>
-          Sign in with Google when we connect auth. For now, this button simulates a successful login so you
-          can explore the app shell.
-        </Text>
-
-        <PrimaryButton
-          label="Continue with Google"
-          variant="google"
-          onPress={signInWithGooglePlaceholder}
-          style={styles.googleBtn}
-        />
-
-        <View style={styles.row}>
-          <View style={styles.fakeIcon}>
-            <Text style={styles.fakeG}>G</Text>
+    <SafeAreaView style={[styles.safe, { backgroundColor: a.canvas }]} edges={['top', 'bottom']}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.hero}>
+          <View style={[styles.logoMark, { backgroundColor: a.accent }]}>
+            <Ionicons name="flash" size={36} color={a.accentIconFg} />
           </View>
-          <Text style={styles.devNote}>Google Sign-In SDK + backend token exchange — coming in a later step.</Text>
+          <Text style={[styles.title, { color: a.accent }]}>SetFuel</Text>
+          <Text style={[styles.tagline, { color: a.textTagline }]}>
+            Fuel your sets, set your fuel
+          </Text>
         </View>
-      </View>
+
+        <View style={[styles.card, { backgroundColor: a.card }]}>
+          <View style={[styles.badge, { backgroundColor: a.badge }]}>
+            <Text style={[styles.badgeText, { color: a.textPrimary }]}>SYSTEM UPDATE</Text>
+          </View>
+
+          <Text style={[styles.headline, { color: a.textPrimary }]}>Authentication Coming Soon</Text>
+
+          <Text style={[styles.body, { color: a.textBody }]}>
+            We&apos;re putting the finishing touches on our secure platform. Early access will be available
+            shortly for all fitness enthusiasts.
+          </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={signInWithGooglePlaceholder}
+            style={({ pressed }) => [
+              styles.googleBtn,
+              {
+                backgroundColor: a.googleButtonBg,
+                borderColor: a.googleButtonBorder,
+                opacity: pressed ? 0.92 : 1,
+              },
+            ]}
+          >
+            <FontAwesome5 name="google" size={20} color="#4285F4" brand />
+            <Text style={[styles.googleLabel, { color: a.textPrimary }]}>Continue with Google</Text>
+          </Pressable>
+
+          <View style={[styles.cardDivider, { backgroundColor: a.divider }]} />
+
+          <Text style={[styles.cardFooter, { color: a.textMuted }]}>
+            PREMIUM EDITORIAL FITNESS EXPERIENCE
+          </Text>
+        </View>
+
+        <View style={styles.legalRow}>
+          <Pressable onPress={() => openUrl('https://example.com/privacy')} hitSlop={8}>
+            <Text style={[styles.legalLink, { color: a.textMuted }]}>PRIVACY POLICY</Text>
+          </Pressable>
+          <Pressable onPress={() => openUrl('https://example.com/terms')} hitSlop={8}>
+            <Text style={[styles.legalLink, { color: a.textMuted }]}>TERMS OF SERVICE</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -50,89 +110,110 @@ export function LoginScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: colors.background,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: spacing.xl,
   },
   hero: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xxl,
+    paddingTop: spacing.xl,
     paddingBottom: spacing.lg,
     alignItems: 'center',
   },
   logoMark: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: colors.primaryMuted,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
   },
-  logoLetter: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: colors.primaryDark,
-  },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '800',
-    color: colors.text,
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
   },
   tagline: {
     marginTop: spacing.sm,
-    fontSize: 16,
-    color: colors.textSecondary,
+    fontSize: 15,
+    fontStyle: 'italic',
     textAlign: 'center',
-    maxWidth: 280,
+    maxWidth: 300,
     lineHeight: 22,
   },
-  panel: {
-    flex: 1,
-    marginHorizontal: spacing.md,
+  card: {
+    marginHorizontal: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
+    borderRadius: 24,
+  },
+  badge: {
+    alignSelf: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: 100,
     marginBottom: spacing.lg,
-    padding: spacing.lg,
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  welcome: {
-    fontSize: 20,
+  badgeText: {
+    fontSize: 10,
     fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.sm,
+    letterSpacing: 1.2,
   },
-  hint: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    lineHeight: 20,
+  headline: {
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 28,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.xs,
+  },
+  body: {
+    fontSize: 15,
+    fontWeight: '400',
+    textAlign: 'center',
+    lineHeight: 24,
     marginBottom: spacing.xl,
+    paddingHorizontal: spacing.xs,
   },
   googleBtn: {
-    marginBottom: spacing.lg,
-  },
-  row: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-  },
-  fakeIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    backgroundColor: colors.googleBlue,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 12,
+    minHeight: 54,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 24,
+    borderWidth: 1,
   },
-  fakeG: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 14,
+  googleLabel: {
+    fontSize: 16,
+    fontWeight: '600',
   },
-  devNote: {
-    flex: 1,
-    fontSize: 12,
-    color: colors.textMuted,
-    lineHeight: 18,
+  cardDivider: {
+    height: 1,
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+    alignSelf: 'stretch',
+  },
+  cardFooter: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  legalRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.xl,
+    marginTop: spacing.xl,
+    paddingHorizontal: spacing.lg,
+  },
+  legalLink: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.2,
   },
 });

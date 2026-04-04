@@ -31,12 +31,12 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
+    borderColor: colors.outlineGhost,
+    borderRadius: 16,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     fontSize: 16,
     color: colors.text,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceContainerLowest,
   },
 });

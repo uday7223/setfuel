@@ -125,13 +125,20 @@ Bump `expo.android.versionCode` in `app.json` before each **new** store-style up
 
 ## Folder structure
 
+For navigation, state, and how to implement new features, see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
+
 ```text
 setfuel/
 ├── README.md                 # This file — setup, features, structure, decisions
+├── ARCHITECTURE.md           # Project architecture — nav, state, feature playbook
 ├── RELEASE_NOTES.md          # Versioned release history and publish notes
 ├── backend/                  # Node + Postgres (coming later)
 │   └── README.md
 └── mobile/                   # Expo React Native app
+    ├── babel.config.js       # NativeWind + Reanimated
+    ├── metro.config.js       # NativeWind (CSS input)
+    ├── tailwind.config.js
+    ├── global.css            # Tailwind entry for NativeWind
     ├── eas.json              # EAS Build profiles (preview APK, production AAB)
     ├── App.tsx               # SafeAreaProvider, AuthProvider, NavigationContainer
     ├── app.json              # Expo app name/slug: SetFuel / setfuel
@@ -173,7 +180,7 @@ setfuel/
 ## React vs React Native (mental model)
 
 - **Layout**: Flexbox is the default; there is no browser DOM—`View` ≈ `div`, `Text` must wrap strings.
-- **Styling**: `StyleSheet` objects, not separate CSS files (unless you add a library).
+- **Styling**: **NativeWind** (Tailwind for React Native) via `className`; existing screens may still use `StyleSheet` until refactored. `mobile/global.css` + `tailwind.config.js` drive utilities.
 - **Press targets**: Prefer `Pressable` (or `TouchableOpacity`) over expecting a native `<button>`.
 - **Navigation**: Screen flow is explicit (stack/tabs), not URL-first like React Router—though deep linking can align them later.
 

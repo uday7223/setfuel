@@ -44,7 +44,9 @@ export function PrimaryButton({
       {...rest}
     >
       {loading ? (
-        <ActivityIndicator color={variant === 'outline' ? colors.primary : '#fff'} />
+        <ActivityIndicator
+          color={variant === 'outline' ? colors.primary : colors.onPrimary}
+        />
       ) : (
         <Text
           style={[
@@ -64,7 +66,7 @@ export function PrimaryButton({
 const styles = StyleSheet.create({
   base: {
     minHeight: 52,
-    borderRadius: 12,
+    borderRadius: 24,
     paddingHorizontal: spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
@@ -74,13 +76,13 @@ const styles = StyleSheet.create({
   },
   outline: {
     backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: colors.primary,
+    borderWidth: 1,
+    borderColor: colors.outlineGhost,
   },
   google: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceContainerLowest,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.outlineGhost,
   },
   pressed: {
     opacity: 0.88,
@@ -93,7 +95,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   labelOnPrimary: {
-    color: '#fff',
+    color: colors.onPrimary,
   },
   labelOutline: {
     color: colors.primary,
