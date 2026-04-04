@@ -111,6 +111,7 @@ Async service layer that **wraps all data operations**. Currently backed by loca
 | `mealService.ts` | `getMeals()`, `addMeal()`, `removeMeal()`, `getDailySummary()`, `DAILY_GOAL_KCAL` |
 | `workoutService.ts` | `getPrograms()`, `startSession()`, `endSession()`, `addExercise()`, `addSet()`, `updateSet()`, `toggleSetDone()` |
 | `userService.ts` | `getProfile()`, `getDashboardSummary()`, `PLACEHOLDER_AVATAR` |
+| `routinesStorage.ts` | `loadRoutines()`, `saveRoutines()`, `resetRoutinesToDefaults()` — AsyncStorage-backed program list |
 | `index.ts` | Barrel re-export |
 
 **API integration playbook:**
@@ -125,6 +126,7 @@ Async service layer that **wraps all data operations**. Currently backed by loca
 |---------|--------|--------|
 | Signed in flag | `AuthContext` | `signInWithGooglePlaceholder`, `signOut` — replace with real OAuth + tokens later |
 | Workout session | `WorkoutTrackerScreen` local `useState` via service calls | Exercises, sets, modals; service layer is async-ready |
+| Workout programs | `routinesStorage` + `WorkoutTrackerScreen` | Persist in AsyncStorage; **new installs start with an empty list**; user adds programs or taps “Use sample programs”; `resetRoutinesToDefaults()` loads `personalRoutines.ts` |
 | Meals list | `DietTrackerScreen` local `useState` via `mealService` | Fetches seed meals on mount; add/remove go through service |
 | Dashboard data | `HomeScreen` local `useState` via `userService` | Profile + summary fetched on mount |
 
@@ -150,7 +152,7 @@ Async service layer that **wraps all data operations**. Currently backed by loca
 |--------|------|------|
 | Login | `screens/auth/LoginScreen.tsx` | Placeholder Google CTA → `signInWithGooglePlaceholder` |
 | Home | `screens/home/HomeScreen.tsx` | Dashboard cards, tab jumps, sign out |
-| Workout | `screens/workout/WorkoutTrackerScreen.tsx` | Programs from data file, session log, modals |
+| Workout | `screens/workout/WorkoutTrackerScreen.tsx` | Programs (editable, persisted locally), session log, modals |
 | Diet | `screens/diet/DietTrackerScreen.tsx` | Meal list, kcal total, log/quick-add modal |
 
 ## Data files
@@ -159,7 +161,7 @@ Async service layer that **wraps all data operations**. Currently backed by loca
 |------|------|
 | `src/data/personalRoutines.ts` | `PERSONAL_ROUTINES`, re-exports `PersonalRoutine` / `RoutineBlock` from `types/`, helper `flattenRoutineItems` |
 
-Editing this file changes what appears on the Workout tab; no runtime CMS yet. When the backend arrives, `workoutService.getPrograms()` will fetch from API instead of importing this file.
+**New users** get an empty program list; the Workout screen offers **Add program** and optional **Use sample programs** (loads this file via `resetRoutinesToDefaults()`). Edits persist in AsyncStorage. When the backend arrives, replace `routinesStorage` with API sync.
 
 ## Backend (future)
 
