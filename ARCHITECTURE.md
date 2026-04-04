@@ -98,7 +98,7 @@ flowchart TB
 
 ## UI system
 
-- **Global theme (single source of truth)**: `src/theme/designTokens.json` — all color hex values. **`colors.ts`** maps them to the `colors` object used in `StyleSheet` code (semantic names + a few legacy aliases like `background`, `text`, `border`). **`tailwind.config.js`** reads the same JSON so NativeWind utilities stay in sync.
+- **Global theme (single source of truth)**: `src/theme/designTokens.json` — all color hex values. **`colors.ts`** maps them to the `colors` object used in `StyleSheet` code (semantic names + a few legacy aliases like `background`, `text`, `border`). **`tailwind.config.js`** reads the same JSON so NativeWind utilities stay in sync. **`authLanding`** in that JSON is the dark palette for `LoginScreen` only. **`dashboard`** is the dark home / bento palette plus light chrome (header + floating tab bar) from the Stitch HTML reference; other tabs (Workout, Diet) still use the light `colors` theme until those screens are restyled.
 - **Typography scale (Stitch)**: `src/theme/typography.ts` — Inter / Manrope roles and sizes; wire `expo-font` when you load those families.
 - **Spacing**: `src/theme/spacing.ts`, re-exported from `src/theme/index.ts`.
 - **Barrel**: `src/theme/index.ts` exports `colors`, `spacing`, `typography`, and `designTokens`.

@@ -7,6 +7,12 @@ import designTokens from './designTokens.json';
 
 const c = designTokens.colors;
 
+/** Dark landing / login only (Stitch “Mindful Kinetic” auth screen). Main app tabs stay light. */
+export const authLanding = designTokens.authLanding;
+
+/** Dark dashboard + light chrome (header / tab bar) — matches Stitch HTML reference. */
+export const dashboard = designTokens.dashboard;
+
 export const colors = {
   // —— Stitch / design-system names (prefer in new code) ——
   primary: c.primary,
