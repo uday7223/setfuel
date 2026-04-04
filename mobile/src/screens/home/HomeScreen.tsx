@@ -1,5 +1,6 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Platform,
   Pressable,
@@ -16,22 +17,38 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
+import type { DashboardSummary, UserProfile } from '../../types';
+import { userService } from '../../services';
 import type { MainTabParamList } from '../../navigation/types';
 import { dashboard, spacing } from '../../theme';
 
-const AVATAR_URI =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDlnYfuJGuqGX_jpG_kU-0JewD4MEWdINk9osNxceiHXvMYw0rD4eIAlP6XxUUewlOhkUCq2xZ1Pe0qMNXjKKv4Hp8dkkTglK515OELtHkyn_3S1F9dW8n3-LEQrGpGluHbAyS1999LpnlR8CjVUUm15dOG69DhTUCTtJ0PikpQb1wyUDhS4ZVwtttFMz04MgiAbCUAU0182Ke6088AggoqQ8FhEoiw0kdJ4YpYKJDIt9WQwU0JPQhuFyd3SDA-GYZAudXwWomFnr0';
-
 const CHALLENGE_URI =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuBPvNKUTcNM3A9ClmJ4urTjrrEi7uI1ofO50tB1-UFDFkxxDsoAmH8rp85tVS1Wn3i2udY-tJSbDr3Q-UL5XFReUUxJ06-WudsmCwlQGyPVja-_i-Xr-WMaVRC_b4wP-DtRck4LMIDcievuzqsP4MXbLiMTB9j67EZXv4if0Kwsiz_LtUjq0jNgi7xDuBWkWuaAi0-7UYO1KgPh78Nyuk-1AOlIkEDjwhKx5_o6ha1IibsjQOil5eIp0wwfhAcmNQ41TZ75J11BKKI';
-
-const NUTRITION_PROGRESS = 0.72;
 
 export function HomeScreen() {
   const { signOut } = useAuth();
   const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
   const insets = useSafeAreaInsets();
   const d = dashboard;
+
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [p, s] = await Promise.all([
+        userService.getProfile(),
+        userService.getDashboardSummary(),
+      ]);
+      if (cancelled) return;
+      setProfile(p);
+      setSummary(s);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -55,7 +72,9 @@ export function HomeScreen() {
     <View style={styles.headerRow}>
       <View style={styles.headerLeft}>
         <View style={[styles.avatarWrap, { backgroundColor: d.surfaceContainerLow }]}>
-          <Image source={{ uri: AVATAR_URI }} style={styles.avatarImg} resizeMode="cover" />
+          {profile?.avatarUri && (
+            <Image source={{ uri: profile.avatarUri }} style={styles.avatarImg} resizeMode="cover" />
+          )}
         </View>
         <Text style={[styles.wordmark, { color: d.brandTeal }]}>SetFuel</Text>
       </View>
@@ -82,6 +101,11 @@ export function HomeScreen() {
         </View>
       )}
 
+      {loading ? (
+        <View style={styles.loader}>
+          <ActivityIndicator size="large" color={d.brandTeal} />
+        </View>
+      ) : (
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + spacing.xxl + 56 }]}
@@ -109,7 +133,9 @@ export function HomeScreen() {
               <Ionicons name="barbell" size={28} color={d.primary} />
             </View>
             <Text style={[styles.cardTitle, { color: d.onSurface }]}>Workout</Text>
-            <Text style={[styles.cardMeta, { color: d.secondary }]}>LAST SESSION: 2 DAYS AGO</Text>
+            <Text style={[styles.cardMeta, { color: d.secondary }]}>
+              LAST SESSION: {summary?.lastWorkoutDaysAgo ?? '–'} DAYS AGO
+            </Text>
             <Pressable
               onPress={() => navigation.navigate('Workout')}
               accessibilityRole="button"
@@ -132,13 +158,15 @@ export function HomeScreen() {
               <Ionicons name="nutrition" size={28} color={d.tertiary} />
             </View>
             <Text style={[styles.cardTitle, { color: d.onSurface }]}>Nutrition</Text>
-            <Text style={[styles.cardMetaNutrition, { color: d.secondary }]}>1,850 KCAL TODAY</Text>
+            <Text style={[styles.cardMetaNutrition, { color: d.secondary }]}>
+              {(summary?.todayKcal ?? 0).toLocaleString()} KCAL TODAY
+            </Text>
             <View style={[styles.progressTrack, { backgroundColor: d.surfaceContainerHighest }]}>
               <View
                 style={[
                   styles.progressFill,
                   {
-                    width: `${NUTRITION_PROGRESS * 100}%`,
+                    width: `${(summary?.nutritionProgress ?? 0) * 100}%`,
                     backgroundColor: d.primary,
                   },
                 ]}
@@ -185,6 +213,7 @@ export function HomeScreen() {
           </View>
         </View>
       </ScrollView>
+      )}
     </View>
   );
 }
@@ -192,6 +221,11 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+  },
+  loader: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerBlur: {
     paddingHorizontal: spacing.lg,

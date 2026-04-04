@@ -1,5 +1,6 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -17,63 +18,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { Macros, Meal } from '../../types';
+import { mealService, userService } from '../../services';
 import { dashboard, spacing } from '../../theme';
 
 const d = dashboard;
-
-const AVATAR_URI =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuCCMQVXUzlva7_8o4Lhjn4ARRTGZLkm9sVhzy8FsS_vTfVhHeAi2IP-mLsFdk_5Ai-9J3QMG5_2NqVflxHF6rlyzZJ9NyCrnggj_L5-hDAkh3cTC3WSsiF5qOGtiQx-ZOYz9KgkrVyupLQIB6weamUDGSI33Ik7vleC9k4U5mh5P4vMcNg2ng4RQnrXw6SpQxoi_zEgqsQGxaHE5Qyel2zuaPfIF9PkHZp4jWXDQrHuCWRcbb9aLkeHOBRviAO6Yxn9FiQmEkxbBss';
-
-const DAILY_GOAL_KCAL = 2500;
-
-type Macros = { protein: number; carbs: number; fats: number };
-type MealRow = {
-  id: string;
-  name: string;
-  kcal: number;
-  time: string;
-  imageUri?: string;
-  macros?: Macros;
-};
-
-function makeId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function formatNowTime() {
-  const now = new Date();
-  return now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase();
-}
-
-const SEED_MEALS: MealRow[] = [
-  {
-    id: 'seed-1',
-    name: 'Greek Yogurt Bowl',
-    kcal: 420,
-    time: '08:30 AM',
-    imageUri:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAy-p69qzU3GSJYObi5UKQeX2UaGnxIDPopDotwxioBd2Tv5SF1wZb52HM5hZfM5BRIfgRXq1-G0aG-VktLCdgIVTW8VwYYYTBZxGHc76jiQHMN786jXxab7eWda8z5aeXYWrE2GBApdYmDEoFDLmHykUmF4OR_iMixCwqreuWG-TIj5z2z6ssXuLvCvvt84XhRIMhcG4AUjghgFCwZ25Nn3LZC8Dp7pjQu7Iw2lkH_EUoD9hAym6t2FsKYd6-U06bOt1QKbnqIr5c',
-    macros: { protein: 32, carbs: 48, fats: 12 },
-  },
-  {
-    id: 'seed-2',
-    name: 'Quinoa Salmon Salad',
-    kcal: 680,
-    time: '01:15 PM',
-    imageUri:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuD-yEdvS96bvjLi_8aZHR7pERJe7FcWyjkq3JzkoxV8B2_PIvbVpYaMH-YmBDMmS6Uj13QZYEGVP29gUYXVBrP60yZnonATQTEufhuTGA3QX9yY1eKvvAQaTQONP-Oucw4h7WhXJupS4NZ18QbAlWlKUZOSpxfU1n2RRpgFoWYKeaE-3fBgBTeltTKi14ukg88gaabZ_MEh-_H4AzGJbeircPtHGxIQODb6uJA6k4Qxfr0zERDwHWyqHbDhu_4qjhlrlJbRUJQQ2bo',
-    macros: { protein: 58, carbs: 72, fats: 24 },
-  },
-  {
-    id: 'seed-3',
-    name: 'Mixed Raw Nuts',
-    kcal: 250,
-    time: '04:45 PM',
-    imageUri:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAjvhcA0laOIVAm1z2yWPYW9FN0Q4aN9F07ncspZtQ22dHN3bWCucXobB3KgB4Y5CVmQVpaRNuu8lW_fwe_VzjsMp62yfMgDgRsdyPC9574VGG-iKuqRYirAQCmhy9ik6NceYQWjpdUhRAOOqiNaHkJda0c68GjgVF3z6jAHyRy864WZ-OTfVZPhRIkFdSP143O1JqfuwG2mS4D91xPal0n4MY5DKuWFatsavRmkAKJAIOz2ZA_M_pRkFUCycnEudKrhBbWQiAIsCQ',
-    macros: { protein: 8, carbs: 12, fats: 18 },
-  },
-];
 
 const GLASS_BG = d.glassCard;
 const GLASS_BORDER = d.glassCardBorder;
@@ -81,11 +30,28 @@ const GLASS_BORDER = d.glassCardBorder;
 export function DietTrackerScreen() {
   const insets = useSafeAreaInsets();
 
-  const [meals, setMeals] = useState<MealRow[]>(SEED_MEALS);
+  const [meals, setMeals] = useState<Meal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [avatarUri, setAvatarUri] = useState<string | undefined>();
   const [modalOpen, setModalOpen] = useState(false);
   const [quickMode, setQuickMode] = useState(false);
   const [mealName, setMealName] = useState('');
   const [kcalText, setKcalText] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [fetchedMeals, profile] = await Promise.all([
+        mealService.getMeals(),
+        userService.getProfile(),
+      ]);
+      if (cancelled) return;
+      setMeals(fetchedMeals);
+      setAvatarUri(profile.avatarUri);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const total = useMemo(() => meals.reduce((s, m) => s + m.kcal, 0), [meals]);
   const totalMacros = useMemo<Macros>(
@@ -100,8 +66,8 @@ export function DietTrackerScreen() {
       ),
     [meals],
   );
-  const progressPct = Math.min(total / DAILY_GOAL_KCAL, 1);
-  const remaining = Math.max(0, DAILY_GOAL_KCAL - total);
+  const progressPct = Math.min(total / mealService.DAILY_GOAL_KCAL, 1);
+  const remaining = Math.max(0, mealService.DAILY_GOAL_KCAL - total);
 
   useFocusEffect(
     useCallback(() => {
@@ -128,15 +94,17 @@ export function DietTrackerScreen() {
 
   const closeModal = useCallback(() => setModalOpen(false), []);
 
-  const saveMeal = useCallback(() => {
+  const saveMeal = useCallback(async () => {
     const name = mealName.trim() || 'Meal';
     const kcal = Math.max(0, Math.round(parseFloat(kcalText.replace(',', '.')) || 0));
     if (!Number.isFinite(kcal) || kcalText.trim() === '') return;
-    setMeals((prev) => [{ id: makeId(), name, kcal, time: formatNowTime() }, ...prev]);
+    const created = await mealService.addMeal({ name, kcal });
+    setMeals((prev) => [created, ...prev]);
     setModalOpen(false);
   }, [mealName, kcalText]);
 
-  const removeMeal = useCallback((id: string) => {
+  const handleRemoveMeal = useCallback(async (id: string) => {
+    await mealService.removeMeal(id);
     setMeals((prev) => prev.filter((m) => m.id !== id));
   }, []);
 
@@ -147,7 +115,7 @@ export function DietTrackerScreen() {
     <View style={styles.headerRow}>
       <View style={styles.headerLeft}>
         <View style={styles.avatarWrap}>
-          <Image source={{ uri: AVATAR_URI }} style={styles.avatarImg} resizeMode="cover" />
+          {avatarUri && <Image source={{ uri: avatarUri }} style={styles.avatarImg} resizeMode="cover" />}
         </View>
         <Text style={[styles.wordmark, { color: d.primary }]}>SetFuel</Text>
       </View>
@@ -164,7 +132,7 @@ export function DietTrackerScreen() {
 
   /* ── Meal row renderer ──────────────────────────────── */
   const renderMeal = useCallback(
-    ({ item }: { item: MealRow }) => (
+    ({ item }: { item: Meal }) => (
       <View style={styles.mealCard}>
         <View style={styles.mealCardInner}>
           {item.imageUri ? (
@@ -189,7 +157,7 @@ export function DietTrackerScreen() {
           </View>
 
           <Pressable
-            onPress={() => removeMeal(item.id)}
+            onPress={() => handleRemoveMeal(item.id)}
             hitSlop={10}
             accessibilityRole="button"
             accessibilityLabel="Remove meal"
@@ -200,7 +168,7 @@ export function DietTrackerScreen() {
         </View>
       </View>
     ),
-    [removeMeal],
+    [handleRemoveMeal],
   );
 
   /* ── Footer: "Remaining" placeholder card ───────────── */
@@ -231,6 +199,11 @@ export function DietTrackerScreen() {
         </View>
       )}
 
+      {loading ? (
+        <View style={styles.loader}>
+          <ActivityIndicator size="large" color={d.primary} />
+        </View>
+      ) : (
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -263,7 +236,7 @@ export function DietTrackerScreen() {
                   <Text style={styles.kcalUnit}>kcal</Text>
                 </View>
                 <Text style={styles.goalLine}>
-                  of {DAILY_GOAL_KCAL.toLocaleString()} kcal goal
+                  of {mealService.DAILY_GOAL_KCAL.toLocaleString()} kcal goal
                 </Text>
 
                 {/* Momentum bar */}
@@ -340,6 +313,7 @@ export function DietTrackerScreen() {
           }
         />
       </KeyboardAvoidingView>
+      )}
 
       {/* ── Modal ─────────────────────────────────────── */}
       <Modal visible={modalOpen} transparent animationType="fade" onRequestClose={closeModal}>
@@ -397,6 +371,11 @@ const styles = StyleSheet.create({
     backgroundColor: d.background,
   },
   flex: { flex: 1 },
+  loader: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   /* ── Header ────────────────────────────────────── */
   headerBlur: {

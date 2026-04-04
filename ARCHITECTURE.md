@@ -32,6 +32,8 @@ setfuel/
         ├── data/            # Static / reference data (routines)
         ├── navigation/      # Navigators + typed param lists
         ├── screens/         # Feature screens by domain
+        ├── services/        # Async service layer (API-ready, local fallback)
+        ├── types/           # Shared TypeScript types (API contracts)
         └── theme/           # Design tokens (colors, spacing)
 ```
 
@@ -86,19 +88,51 @@ flowchart TB
 
 **Types**: `src/navigation/types.ts` — `RootStackParamList`, `MainTabParamList`. When adding a screen, update these and the relevant navigator.
 
+## Types (`src/types/`)
+
+Shared TypeScript interfaces that serve as the **contract between frontend and backend**. Every service function and screen component imports from here — not from inline definitions.
+
+| File | Key exports |
+|------|-------------|
+| `meal.ts` | `Meal`, `CreateMealPayload`, `Macros`, `DailySummary` |
+| `workout.ts` | `SetEntry`, `ExerciseEntry`, `WorkoutSession`, `PersonalRoutine`, `RoutineBlock` |
+| `user.ts` | `UserProfile`, `DashboardSummary` |
+| `index.ts` | Barrel re-export of all types |
+
+When defining new features, **add types here first** — they are the source of truth for API shape and screen props.
+
+## Services (`src/services/`)
+
+Async service layer that **wraps all data operations**. Currently backed by local seed data; designed so each function body can be swapped to an `apiFetch()` call when the backend is ready.
+
+| File | Responsibility |
+|------|----------------|
+| `api.ts` | Base fetch client (`apiFetch`), auth token management, `USE_LOCAL` flag, `localId()` helper |
+| `mealService.ts` | `getMeals()`, `addMeal()`, `removeMeal()`, `getDailySummary()`, `DAILY_GOAL_KCAL` |
+| `workoutService.ts` | `getPrograms()`, `startSession()`, `endSession()`, `addExercise()`, `addSet()`, `updateSet()`, `toggleSetDone()` |
+| `userService.ts` | `getProfile()`, `getDashboardSummary()`, `PLACEHOLDER_AVATAR` |
+| `index.ts` | Barrel re-export |
+
+**API integration playbook:**
+1. Set `BASE_URL` in `api.ts` to your server.
+2. Set `USE_LOCAL = false`.
+3. Uncomment the `apiFetch()` lines in each service function.
+4. Each screen already handles loading / error states — no UI changes needed.
+
 ## State and persistence
 
 | Concern | Where | Notes |
 |---------|--------|--------|
 | Signed in flag | `AuthContext` | `signInWithGooglePlaceholder`, `signOut` — replace with real OAuth + tokens later |
-| Workout session | `WorkoutTrackerScreen` local `useState` | Exercises, sets, modals; lost on unmount / app kill until you add persistence/API |
-| Meals list | `DietTrackerScreen` local `useState` | Includes seed meals; same persistence story |
+| Workout session | `WorkoutTrackerScreen` local `useState` via service calls | Exercises, sets, modals; service layer is async-ready |
+| Meals list | `DietTrackerScreen` local `useState` via `mealService` | Fetches seed meals on mount; add/remove go through service |
+| Dashboard data | `HomeScreen` local `useState` via `userService` | Profile + summary fetched on mount |
 
-**Rule of thumb**: New **cross-screen** or **survive-restart** data should eventually live in **API + cache** (e.g. TanStack Query) or **device storage** — not scattered screen state. Until backend exists, keep feature state colocated in the screen or introduce a small feature context if two screens must share it.
+**Rule of thumb**: New **cross-screen** or **survive-restart** data should eventually live in **API + cache** (e.g. TanStack Query) or **device storage** — not scattered screen state. The service layer is the bridge: screens call services, services call API or local storage.
 
 ## UI system
 
-- **Global theme (single source of truth)**: `src/theme/designTokens.json` — all color hex values. **`colors.ts`** maps them to the `colors` object used in `StyleSheet` code (semantic names + a few legacy aliases like `background`, `text`, `border`). **`tailwind.config.js`** reads the same JSON so NativeWind utilities stay in sync. **`authLanding`** in that JSON is the dark palette for `LoginScreen` only. **`dashboard`** is the dark palette plus light header chrome from Stitch; **`HomeScreen`** and **`WorkoutTrackerScreen`** use it. **`DietTrackerScreen`** still uses the light `colors` theme until restyled.
+- **Global theme (single source of truth)**: `src/theme/designTokens.json` — all color hex values. **`colors.ts`** maps them to the `colors` object used in `StyleSheet` code (semantic names + a few legacy aliases like `background`, `text`, `border`). **`tailwind.config.js`** reads the same JSON so NativeWind utilities stay in sync. **`authLanding`** is the dark palette for `LoginScreen` only. **`dashboard`** is the dark palette plus light header chrome from Stitch; **all three main screens** (`HomeScreen`, `WorkoutTrackerScreen`, `DietTrackerScreen`) use it.
 - **Typography scale (Stitch)**: `src/theme/typography.ts` — Inter / Manrope roles and sizes; wire `expo-font` when you load those families.
 - **Spacing**: `src/theme/spacing.ts`, re-exported from `src/theme/index.ts`.
 - **Barrel**: `src/theme/index.ts` exports `colors`, `spacing`, `typography`, and `designTokens`.
@@ -123,13 +157,19 @@ flowchart TB
 
 | File | Role |
 |------|------|
-| `src/data/personalRoutines.ts` | `PERSONAL_ROUTINES`, types `PersonalRoutine`, `RoutineBlock`, helper `flattenRoutineItems` |
+| `src/data/personalRoutines.ts` | `PERSONAL_ROUTINES`, re-exports `PersonalRoutine` / `RoutineBlock` from `types/`, helper `flattenRoutineItems` |
 
-Editing this file changes what appears on the Workout tab; no runtime CMS yet.
+Editing this file changes what appears on the Workout tab; no runtime CMS yet. When the backend arrives, `workoutService.getPrograms()` will fetch from API instead of importing this file.
 
 ## Backend (future)
 
-See `backend/README.md`. Planned: REST or tRPC, Postgres, Google token verification. Mobile will swap `AuthContext` implementation and replace local lists with API-backed state.
+See `backend/README.md`. Planned: REST or tRPC, Postgres, Google token verification.
+
+**Integration path**: The service layer (`src/services/`) is designed for a minimal switchover:
+1. Configure `BASE_URL` and flip `USE_LOCAL` in `api.ts`.
+2. Uncomment the `apiFetch()` calls in each service.
+3. Wire `setAuthToken()` from the auth flow after Google sign-in.
+4. Screens already handle async loading — no UI rewrites needed.
 
 ## Builds
 

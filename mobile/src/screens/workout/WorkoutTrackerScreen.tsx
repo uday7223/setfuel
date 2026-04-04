@@ -19,10 +19,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { ExerciseEntry, PersonalRoutine, SetEntry } from '../../types';
+import { localId } from '../../services/api';
+import { PLACEHOLDER_AVATAR } from '../../services/userService';
 import {
   flattenRoutineItems,
   PERSONAL_ROUTINES,
-  type PersonalRoutine,
 } from '../../data/personalRoutines';
 import { dashboard, spacing } from '../../theme';
 
@@ -38,16 +40,6 @@ type ProgramRoutineCardProps = {
   titleColor: string;
   metaColor: string;
 };
-
-const WORKOUT_AVATAR_URI =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDioDUWRxxmZ77y-Xdw6cY-2ZD3NFVIZAq34_r5zZDyrkoSevJOT1gMTpOYXXb9fZkFufbF2xRsfOr3oQ_lu8lsvl3gZotfJuYnHsnhh0y2TZO7fbx4iFNxrMF97n_9_KIFp-Q62IeB1chp6Ir58uPIrnR7JWkZvX4aQbB0dKKu5Vch8YAVWfWkv0y2LwT2d4YFEg3LAdXcpIAFD72sFD6EKGf6t7E_8JyA2irn7MxDU3jgeivAMj3xnjiS5drVzVev4Tcc3ZwFLJc';
-
-type SetEntry = { id: string; reps: string; weightKg: string; done: boolean };
-type ExerciseEntry = { id: string; name: string; sets: SetEntry[] };
-
-function makeId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
 
 function routineDurationMin(index: number) {
   return 55 + ((index * 37) % 20);
@@ -159,9 +151,9 @@ export function WorkoutTrackerScreen() {
     setExercises((prev) => [
       ...prev,
       {
-        id: makeId(),
+        id: localId(),
         name,
-        sets: [{ id: makeId(), reps: '10', weightKg: '', done: false }],
+        sets: [{ id: localId(), reps: '10', weightKg: '', done: false }],
       },
     ]);
     setExerciseModalOpen(false);
@@ -175,7 +167,7 @@ export function WorkoutTrackerScreen() {
     setExercises((prev) =>
       prev.map((e) =>
         e.id === exerciseId
-          ? { ...e, sets: [...e.sets, { id: makeId(), reps: '10', weightKg: '', done: false }] }
+          ? { ...e, sets: [...e.sets, { id: localId(), reps: '10', weightKg: '', done: false }] }
           : e,
       ),
     );
@@ -230,9 +222,9 @@ export function WorkoutTrackerScreen() {
     setExercises((prev) => [
       ...prev,
       ...names.map((name) => ({
-        id: makeId(),
+        id: localId(),
         name,
-        sets: [{ id: makeId(), reps: '10', weightKg: '', done: false }],
+        sets: [{ id: localId(), reps: '10', weightKg: '', done: false }],
       })),
     ]);
     setRoutineViewer(null);
@@ -253,7 +245,7 @@ export function WorkoutTrackerScreen() {
     <View style={styles.headerRow}>
       <View style={styles.headerLeft}>
         <View style={[styles.avatarWrap, { backgroundColor: d.primaryFixed }]}>
-          <Image source={{ uri: WORKOUT_AVATAR_URI }} style={styles.avatarImg} resizeMode="cover" />
+          <Image source={{ uri: PLACEHOLDER_AVATAR }} style={styles.avatarImg} resizeMode="cover" />
         </View>
         <Text style={[styles.wordmark, { color: d.brandTeal }]}>SetFuel</Text>
       </View>
