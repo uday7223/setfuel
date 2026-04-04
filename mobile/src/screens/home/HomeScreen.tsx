@@ -10,14 +10,14 @@ import {
   Text,
   View,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
-import type { DashboardSummary, UserProfile } from '../../types';
+import { AppHeader } from '../../components/ui/AppHeader';
+import type { DashboardSummary } from '../../types';
 import { userService } from '../../services';
 import type { MainTabParamList } from '../../navigation/types';
 import { dashboard, spacing } from '../../theme';
@@ -31,7 +31,7 @@ export function HomeScreen() {
   const insets = useSafeAreaInsets();
   const d = dashboard;
 
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [avatarUri, setAvatarUri] = useState<string | undefined>();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -43,7 +43,7 @@ export function HomeScreen() {
         userService.getDashboardSummary(),
       ]);
       if (cancelled) return;
-      setProfile(p);
+      setAvatarUri(p.avatarUri);
       setSummary(s);
       setLoading(false);
     })();
@@ -52,14 +52,11 @@ export function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      StatusBar.setBarStyle('dark-content');
+      StatusBar.setBarStyle('light-content');
       if (Platform.OS === 'android') {
-        StatusBar.setBackgroundColor(d.headerSolid);
+        StatusBar.setBackgroundColor(d.background);
       }
-      return () => {
-        StatusBar.setBarStyle('dark-content');
-      };
-    }, [d.headerSolid]),
+    }, [d.background]),
   );
 
   const today = new Date().toLocaleDateString('en-US', {
@@ -68,38 +65,9 @@ export function HomeScreen() {
     day: 'numeric',
   });
 
-  const headerChrome = (
-    <View style={styles.headerRow}>
-      <View style={styles.headerLeft}>
-        <View style={[styles.avatarWrap, { backgroundColor: d.surfaceContainerLow }]}>
-          {profile?.avatarUri && (
-            <Image source={{ uri: profile.avatarUri }} style={styles.avatarImg} resizeMode="cover" />
-          )}
-        </View>
-        <Text style={[styles.wordmark, { color: d.brandTeal }]}>SetFuel</Text>
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Notifications"
-        hitSlop={12}
-        style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.7 }]}
-      >
-        <Ionicons name="notifications-outline" size={24} color={d.brandTeal} />
-      </Pressable>
-    </View>
-  );
-
   return (
     <View style={[styles.root, { backgroundColor: d.background }]}>
-      {Platform.OS === 'ios' ? (
-        <BlurView intensity={55} tint="light" style={[styles.headerBlur, { paddingTop: insets.top }]}>
-          {headerChrome}
-        </BlurView>
-      ) : (
-        <View style={[styles.headerBlur, { paddingTop: insets.top, backgroundColor: d.headerSolid }]}>
-          {headerChrome}
-        </View>
-      )}
+      <AppHeader avatarUri={avatarUri} topInset={insets.top} />
 
       {loading ? (
         <View style={styles.loader}>
@@ -226,40 +194,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  headerBlur: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    overflow: 'hidden',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm + 4,
-  },
-  avatarWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  avatarImg: {
-    width: '100%',
-    height: '100%',
-  },
-  wordmark: {
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: -0.6,
-  },
-  iconBtn: {
-    padding: spacing.sm,
-    borderRadius: 999,
   },
   scroll: {
     flex: 1,

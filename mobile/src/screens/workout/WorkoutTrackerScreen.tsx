@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Animated,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,7 +14,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -22,11 +21,48 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ExerciseEntry, PersonalRoutine, SetEntry } from '../../types';
 import { localId } from '../../services/api';
 import { PLACEHOLDER_AVATAR } from '../../services/userService';
+import { AppHeader } from '../../components/ui/AppHeader';
+import { flattenRoutineItems } from '../../data/personalRoutines';
 import {
-  flattenRoutineItems,
-  PERSONAL_ROUTINES,
-} from '../../data/personalRoutines';
+  loadRoutines,
+  resetRoutinesToDefaults,
+  saveRoutines,
+} from '../../services/routinesStorage';
 import { dashboard, spacing } from '../../theme';
+
+function reportSampleProgramsError(err: unknown) {
+  const msg = err instanceof Error ? err.message : 'Please try again.';
+  console.error('[SetFuel] sample programs', err);
+  if (Platform.OS === 'web') {
+    if (typeof globalThis.alert === 'function') {
+      globalThis.alert(`Could not load sample programs.\n\n${msg}`);
+    }
+  } else {
+    Alert.alert('Could not load sample programs', msg);
+  }
+}
+
+function cloneRoutine(r: PersonalRoutine): PersonalRoutine {
+  return JSON.parse(JSON.stringify(r)) as PersonalRoutine;
+}
+
+function sanitizeRoutine(r: PersonalRoutine): PersonalRoutine {
+  const blocks = r.blocks
+    .map((b) => ({
+      heading: b.heading.trim() || 'Exercises',
+      items: b.items.map((i) => i.trim()).filter(Boolean),
+    }))
+    .map((b) => ({ ...b, items: b.items.length ? b.items : [''] }));
+  const finalBlocks = blocks.length > 0 ? blocks : [{ heading: 'Exercises', items: [''] }];
+  return {
+    ...r,
+    title: r.title.trim() || 'Program',
+    dayLabel: r.dayLabel?.trim() || undefined,
+    blocks: finalBlocks,
+  };
+}
+
+type RoutineModalState = { draft: PersonalRoutine; editMode: boolean };
 
 type ProgramRoutineCardProps = {
   routine: PersonalRoutine;
@@ -122,18 +158,27 @@ export function WorkoutTrackerScreen() {
   const [exercises, setExercises] = useState<ExerciseEntry[]>([]);
   const [exerciseModalOpen, setExerciseModalOpen] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState('');
-  const [routineViewer, setRoutineViewer] = useState<PersonalRoutine | null>(null);
+  const [routineModal, setRoutineModal] = useState<RoutineModalState | null>(null);
+  const [programs, setPrograms] = useState<PersonalRoutine[]>([]);
+  const [programsLoading, setProgramsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadRoutines().then((list) => {
+      if (!cancelled) setPrograms(list);
+    }).finally(() => {
+      if (!cancelled) setProgramsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      StatusBar.setBarStyle('dark-content');
+      StatusBar.setBarStyle('light-content');
       if (Platform.OS === 'android') {
-        StatusBar.setBackgroundColor(d.headerSolid);
+        StatusBar.setBackgroundColor(d.background);
       }
-      return () => {
-        StatusBar.setBarStyle('dark-content');
-      };
-    }, [d.headerSolid]),
+    }, [d.background]),
   );
 
   const startWorkout = useCallback(() => {
@@ -217,8 +262,8 @@ export function WorkoutTrackerScreen() {
   }, []);
 
   const addRoutineExercisesToSession = useCallback(() => {
-    if (!routineViewer || !sessionStarted) return;
-    const names = flattenRoutineItems(routineViewer);
+    if (!routineModal || !sessionStarted) return;
+    const names = flattenRoutineItems(routineModal.draft).filter((n) => n.trim().length > 0);
     setExercises((prev) => [
       ...prev,
       ...names.map((name) => ({
@@ -227,8 +272,130 @@ export function WorkoutTrackerScreen() {
         sets: [{ id: localId(), reps: '10', weightKg: '', done: false }],
       })),
     ]);
-    setRoutineViewer(null);
-  }, [routineViewer, sessionStarted]);
+    setRoutineModal(null);
+  }, [routineModal, sessionStarted]);
+
+  const openRoutineModal = useCallback((r: PersonalRoutine, editMode = false) => {
+    setRoutineModal({ draft: cloneRoutine(r), editMode });
+  }, []);
+
+  const createBlankProgram = useCallback((): PersonalRoutine => {
+    return {
+      id: localId(),
+      title: 'New program',
+      dayLabel: undefined,
+      blocks: [{ heading: 'Exercises', items: [''] }],
+    };
+  }, []);
+
+  const handleAddProgram = useCallback(async () => {
+    const created = createBlankProgram();
+    const next = [...programs, created];
+    setPrograms(next);
+    await saveRoutines(next);
+    openRoutineModal(created, true);
+  }, [programs, createBlankProgram, openRoutineModal]);
+
+  /** Loads PERSONAL_ROUTINES from code into storage + React state (see routinesStorage). */
+  const applyBundledSamplePrograms = useCallback(() => {
+    resetRoutinesToDefaults()
+      .then((next) => {
+        setPrograms(next);
+        setRoutineModal(null);
+      })
+      .catch(reportSampleProgramsError);
+  }, []);
+
+  /** Alert dismiss + async storage can race on native; web has no Alert implementation at all. */
+  const scheduleApplyBundledSamples = useCallback(() => {
+    setTimeout(() => {
+      applyBundledSamplePrograms();
+    }, 0);
+  }, [applyBundledSamplePrograms]);
+
+  const confirmLoadSamplePrograms = useCallback(() => {
+    if (Platform.OS === 'web') {
+      const ok =
+        typeof globalThis.confirm === 'function' &&
+        globalThis.confirm(
+          'Use sample programs?\n\nThis adds the default training split from the app. You can edit or delete programs anytime.',
+        );
+      if (ok) scheduleApplyBundledSamples();
+      return;
+    }
+    Alert.alert(
+      'Use sample programs?',
+      'This adds the default training split from the app. You can edit or delete programs anytime.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Add samples', onPress: scheduleApplyBundledSamples },
+      ],
+    );
+  }, [scheduleApplyBundledSamples]);
+
+  const confirmDeleteProgram = useCallback(() => {
+    if (!routineModal?.editMode) return;
+    const id = routineModal.draft.id;
+    Alert.alert(
+      'Delete this program?',
+      'This removes the program from your list.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const next = programs.filter((p) => p.id !== id);
+            setPrograms(next);
+            await saveRoutines(next);
+            setRoutineModal(null);
+          },
+        },
+      ],
+    );
+  }, [routineModal, programs]);
+
+  const saveProgramEdits = useCallback(async () => {
+    if (!routineModal?.editMode) return;
+    const cleaned = sanitizeRoutine(routineModal.draft);
+    const exists = programs.some((p) => p.id === cleaned.id);
+    const next = exists ? programs.map((p) => (p.id === cleaned.id ? cleaned : p)) : [...programs, cleaned];
+    setPrograms(next);
+    await saveRoutines(next);
+    setRoutineModal({ draft: cleaned, editMode: false });
+  }, [routineModal, programs]);
+
+  const cancelProgramEdit = useCallback(() => {
+    setRoutineModal((m) => {
+      if (!m?.editMode) return m;
+      const fresh = programs.find((p) => p.id === m.draft.id);
+      return fresh ? { draft: cloneRoutine(fresh), editMode: false } : null;
+    });
+  }, [programs]);
+
+  const updateDraft = useCallback((updater: (d: PersonalRoutine) => PersonalRoutine) => {
+    setRoutineModal((m) => (m ? { ...m, draft: updater(m.draft) } : null));
+  }, []);
+
+  const confirmResetAllPrograms = useCallback(() => {
+    if (Platform.OS === 'web') {
+      const ok =
+        typeof globalThis.confirm === 'function' &&
+        globalThis.confirm(
+          'Replace with sample programs?\n\nThis replaces your current programs with the built-in sample split. Your edits will be lost.',
+        );
+      if (ok) scheduleApplyBundledSamples();
+      return;
+    }
+    Alert.alert(
+      'Replace with sample programs?',
+      'This replaces your current programs with the built-in sample split. Your edits will be lost.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reset', style: 'destructive', onPress: scheduleApplyBundledSamples },
+      ],
+    );
+  }, [scheduleApplyBundledSamples]);
 
   const openExerciseMenu = useCallback((exerciseId: string) => {
     Alert.alert('Exercise', undefined, [
@@ -241,36 +408,9 @@ export function WorkoutTrackerScreen() {
     ]);
   }, [removeExercise]);
 
-  const headerChrome = (
-    <View style={styles.headerRow}>
-      <View style={styles.headerLeft}>
-        <View style={[styles.avatarWrap, { backgroundColor: d.primaryFixed }]}>
-          <Image source={{ uri: PLACEHOLDER_AVATAR }} style={styles.avatarImg} resizeMode="cover" />
-        </View>
-        <Text style={[styles.wordmark, { color: d.brandTeal }]}>SetFuel</Text>
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Notifications"
-        hitSlop={12}
-        style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.7 }]}
-      >
-        <Ionicons name="notifications-outline" size={24} color={d.primary} />
-      </Pressable>
-    </View>
-  );
-
   return (
-    <View style={[styles.root, { backgroundColor: d.surfaceContainerLow }]}>
-      {Platform.OS === 'ios' ? (
-        <BlurView intensity={55} tint="light" style={[styles.headerBlur, { paddingTop: insets.top }]}>
-          {headerChrome}
-        </BlurView>
-      ) : (
-        <View style={[styles.headerBlur, { paddingTop: insets.top, backgroundColor: d.headerSolid }]}>
-          {headerChrome}
-        </View>
-      )}
+    <View style={[styles.root, { backgroundColor: d.background }]}>
+      <AppHeader avatarUri={PLACEHOLDER_AVATAR} topInset={insets.top} />
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -293,37 +433,78 @@ export function WorkoutTrackerScreen() {
 
             <View style={styles.programsHeaderRow}>
               <Text style={[styles.sectionTitle, { color: d.onSurface }]}>Your programs</Text>
-              <Pressable
-                onPress={() => programsCarouselRef.current?.scrollToEnd({ animated: true })}
-                hitSlop={8}
-              >
-                <Text style={[styles.viewAll, { color: d.primary }]}>VIEW ALL</Text>
-              </Pressable>
+              {!programsLoading && programs.length > 0 ? (
+                <View style={styles.programsHeaderActions}>
+                  <Pressable
+                    onPress={() => void handleAddProgram()}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Add program"
+                  >
+                    <Text style={[styles.viewAll, { color: d.primary }]}>ADD</Text>
+                  </Pressable>
+                  {programs.length > 1 ? (
+                    <Pressable
+                      onPress={() => programsCarouselRef.current?.scrollToEnd({ animated: true })}
+                      hitSlop={8}
+                    >
+                      <Text style={[styles.viewAll, { color: d.primary }]}>VIEW ALL</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
 
-            <ScrollView
-              ref={programsCarouselRef}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.programsHContent}
-              style={styles.programsHScroll}
-            >
-              {PERSONAL_ROUTINES.map((r, index) => (
-                <ProgramRoutineCard
-                  key={r.id}
-                  routine={r}
-                  index={index}
-                  duration={routineDurationMin(index)}
-                  dayUpper={(r.dayLabel ?? 'DAY').toUpperCase()}
-                  titleLine={r.dayLabel ? `${r.title} ${r.dayLabel}` : r.title}
-                  onPress={() => setRoutineViewer(r)}
-                  surfaceColor={d.programCardSurface}
-                  dayColor={d.onSurfaceVariant}
-                  titleColor={d.onSurface}
-                  metaColor={d.primary}
-                />
-              ))}
-            </ScrollView>
+            {programsLoading ? (
+              <View style={styles.programsLoading}>
+                <ActivityIndicator size="small" color={d.primary} />
+              </View>
+            ) : programs.length === 0 ? (
+              <View style={[styles.emptyProgramsCard, { borderColor: d.outlineVariant }]}>
+                <Ionicons name="albums-outline" size={40} color={d.outline} />
+                <Text style={[styles.emptyProgramsTitle, { color: d.onSurface }]}>No programs yet</Text>
+                <Text style={[styles.emptyProgramsBody, { color: d.onSurfaceVariant }]}>
+                  Create a training split — add days, sections, and exercises. Everything stays on this device
+                  until you sync with a backend.
+                </Text>
+                <Pressable
+                  onPress={() => void handleAddProgram()}
+                  style={[styles.addProgramPrimaryBtn, { backgroundColor: d.primaryContainer }]}
+                >
+                  <Ionicons name="add" size={22} color="#fff" />
+                  <Text style={styles.modalPrimaryText}>Add program</Text>
+                </Pressable>
+                <Pressable onPress={confirmLoadSamplePrograms} style={styles.sampleProgramsLink}>
+                  <Text style={[styles.sampleProgramsLinkText, { color: d.primary }]}>
+                    Use sample programs instead
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <ScrollView
+                ref={programsCarouselRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.programsHContent}
+                style={styles.programsHScroll}
+              >
+                {programs.map((r, index) => (
+                  <ProgramRoutineCard
+                    key={r.id}
+                    routine={r}
+                    index={index}
+                    duration={routineDurationMin(index)}
+                    dayUpper={(r.dayLabel ?? 'DAY').toUpperCase()}
+                    titleLine={r.dayLabel ? `${r.title} ${r.dayLabel}` : r.title}
+                    onPress={() => openRoutineModal(r, false)}
+                    surfaceColor={d.programCardSurface}
+                    dayColor={d.onSurfaceVariant}
+                    titleColor={d.onSurface}
+                    metaColor={d.primary}
+                  />
+                ))}
+              </ScrollView>
+            )}
           </View>
 
           <View style={styles.pagePad}>
@@ -338,13 +519,15 @@ export function WorkoutTrackerScreen() {
                   },
                 ]}
               >
-                <Ionicons name="play-circle-outline" size={28} color={d.primary} />
-                <View style={styles.startSessionText}>
+                <View style={styles.startSessionTitleRow}>
+                  <View style={styles.startSessionIconWrap}>
+                    <Ionicons name="play-circle-outline" size={24} color={d.primary} />
+                  </View>
                   <Text style={[styles.startSessionTitle, { color: d.onSurface }]}>Start workout</Text>
-                  <Text style={[styles.startSessionHint, { color: d.onSurfaceVariant }]}>
-                    Log sets and exercises for this session. Data stays on this device until sync ships.
-                  </Text>
                 </View>
+                <Text style={[styles.startSessionHint, { color: d.onSurfaceVariant }]}>
+                  Log sets and exercises for this session. Data stays on this device until sync ships.
+                </Text>
               </Pressable>
             ) : (
               <>
@@ -368,7 +551,9 @@ export function WorkoutTrackerScreen() {
                   <View style={[styles.emptySession, { backgroundColor: d.surfaceContainerLowest }]}>
                     <Text style={[styles.emptySessionTitle, { color: d.onSurface }]}>No exercises yet</Text>
                     <Text style={[styles.emptySessionBody, { color: d.onSurfaceVariant }]}>
-                      Tap a program card to add all exercises, or use Add exercise below.
+                      {programs.length > 0
+                        ? 'Tap a program card to add all exercises, or use Add exercise below.'
+                        : 'Add a program above first, or use Add exercise below to log manually.'}
                     </Text>
                   </View>
                 ) : (
@@ -536,57 +721,245 @@ export function WorkoutTrackerScreen() {
       </Modal>
 
       <Modal
-        visible={!!routineViewer}
+        visible={!!routineModal}
         transparent
         animationType="fade"
-        onRequestClose={() => setRoutineViewer(null)}
+        onRequestClose={() => {
+          if (routineModal?.editMode) cancelProgramEdit();
+          else setRoutineModal(null);
+        }}
       >
-        <Pressable style={[styles.modalBackdrop, { backgroundColor: 'rgba(10,14,26,0.72)' }]} onPress={() => setRoutineViewer(null)}>
+        <Pressable
+          style={[styles.modalBackdrop, { backgroundColor: 'rgba(10,14,26,0.72)' }]}
+          onPress={() => {
+            if (routineModal?.editMode) cancelProgramEdit();
+            else setRoutineModal(null);
+          }}
+        >
           <Pressable
             style={[styles.routineModalShell, { backgroundColor: d.surfaceContainerLowest }]}
             onPress={(e) => e.stopPropagation()}
           >
-            {routineViewer ? (
+            {routineModal ? (
               <>
-                <Text style={[styles.routineModalTitle, { color: d.onSurface }]}>{routineViewer.title}</Text>
-                {routineViewer.dayLabel ? (
-                  <Text style={[styles.routineModalDay, { color: d.primary }]}>{routineViewer.dayLabel}</Text>
+                <View style={styles.routineModalTopRow}>
+                  <Text style={[styles.routineModalTitle, { color: d.onSurface, flex: 1 }]}>
+                    {routineModal.editMode ? 'Edit program' : routineModal.draft.title}
+                  </Text>
+                  {!routineModal.editMode ? (
+                    <Pressable
+                      onPress={() => setRoutineModal((m) => (m ? { ...m, editMode: true } : null))}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel="Edit program"
+                      style={({ pressed }) => [styles.routineEditIconBtn, pressed && { opacity: 0.7 }]}
+                    >
+                      <Ionicons name="create-outline" size={24} color={d.primary} />
+                    </Pressable>
+                  ) : null}
+                </View>
+                {!routineModal.editMode && routineModal.draft.dayLabel ? (
+                  <Text style={[styles.routineModalDay, { color: d.primary }]}>{routineModal.draft.dayLabel}</Text>
                 ) : null}
+
                 <ScrollView
                   style={styles.routineModalScroll}
                   keyboardShouldPersistTaps="handled"
                   showsVerticalScrollIndicator
                 >
-                  {routineViewer.blocks.map((block) => (
-                    <View key={block.heading} style={styles.routineBlock}>
-                      <Text style={[styles.routineBlockHeading, { color: d.secondary }]}>{block.heading}</Text>
-                      {block.items.map((item, i) => (
-                        <View key={`${block.heading}-${i}`} style={styles.routineItemRow}>
-                          <Text style={[styles.routineItemIndex, { color: d.outline }]}>{i + 1}.</Text>
-                          <Text style={[styles.routineItemText, { color: d.onSurface }]}>{item}</Text>
+                  {routineModal.editMode ? (
+                    <>
+                      <Text style={[styles.inputLabel, { color: d.onSurfaceVariant }]}>Program name</Text>
+                      <TextInput
+                        value={routineModal.draft.title}
+                        onChangeText={(t) => updateDraft((prev) => ({ ...prev, title: t }))}
+                        placeholder="e.g. Chest"
+                        placeholderTextColor={d.outline}
+                        style={[styles.modalInput, { color: d.onSurface, borderColor: d.outlineVariant }]}
+                      />
+                      <Text style={[styles.inputLabel, { color: d.onSurfaceVariant }]}>Day label (optional)</Text>
+                      <TextInput
+                        value={routineModal.draft.dayLabel ?? ''}
+                        onChangeText={(t) =>
+                          updateDraft((prev) => ({
+                            ...prev,
+                            dayLabel: t.trim() ? t : undefined,
+                          }))
+                        }
+                        placeholder="e.g. Monday"
+                        placeholderTextColor={d.outline}
+                        style={[styles.modalInput, { color: d.onSurface, borderColor: d.outlineVariant }]}
+                      />
+                      {routineModal.draft.blocks.map((block, bi) => (
+                        <View key={`edit-block-${bi}`} style={styles.routineBlock}>
+                          <View style={styles.routineEditBlockHead}>
+                            <TextInput
+                              value={block.heading}
+                              onChangeText={(t) =>
+                                updateDraft((prev) => ({
+                                  ...prev,
+                                  blocks: prev.blocks.map((b, i) => (i === bi ? { ...b, heading: t } : b)),
+                                }))
+                              }
+                              placeholder="Section title"
+                              placeholderTextColor={d.outline}
+                              style={[
+                                styles.routineSectionTitleInput,
+                                { color: d.secondary, borderColor: d.outlineVariant },
+                              ]}
+                            />
+                            {routineModal.draft.blocks.length > 1 ? (
+                              <Pressable
+                                onPress={() =>
+                                  updateDraft((prev) => ({
+                                    ...prev,
+                                    blocks: prev.blocks.filter((_, i) => i !== bi),
+                                  }))
+                                }
+                                hitSlop={8}
+                                accessibilityLabel="Remove section"
+                              >
+                                <Ionicons name="trash-outline" size={20} color={d.error} />
+                              </Pressable>
+                            ) : null}
+                          </View>
+                          {block.items.map((item, ii) => (
+                            <View key={`edit-item-${bi}-${ii}`} style={styles.routineEditItemRow}>
+                              <Text style={[styles.routineItemIndex, { color: d.outline }]}>{ii + 1}.</Text>
+                              <TextInput
+                                value={item}
+                                onChangeText={(t) =>
+                                  updateDraft((prev) => ({
+                                    ...prev,
+                                    blocks: prev.blocks.map((b, i) => {
+                                      if (i !== bi) return b;
+                                      return {
+                                        ...b,
+                                        items: b.items.map((it, j) => (j === ii ? t : it)),
+                                      };
+                                    }),
+                                  }))
+                                }
+                                placeholder="Exercise"
+                                placeholderTextColor={d.outline}
+                                style={[
+                                  styles.routineItemEditInput,
+                                  { color: d.onSurface, borderColor: d.outlineVariant },
+                                ]}
+                              />
+                              {block.items.length > 1 ? (
+                                <Pressable
+                                  onPress={() =>
+                                    updateDraft((prev) => ({
+                                      ...prev,
+                                      blocks: prev.blocks.map((b, i) => {
+                                        if (i !== bi) return b;
+                                        if (b.items.length <= 1) return b;
+                                        return { ...b, items: b.items.filter((_, j) => j !== ii) };
+                                      }),
+                                    }))
+                                  }
+                                  hitSlop={8}
+                                >
+                                  <Ionicons name="close-circle-outline" size={22} color={d.outline} />
+                                </Pressable>
+                              ) : (
+                                <View style={{ width: 22 }} />
+                              )}
+                            </View>
+                          ))}
+                          <Pressable
+                            onPress={() =>
+                              updateDraft((prev) => ({
+                                ...prev,
+                                blocks: prev.blocks.map((b, i) =>
+                                  i === bi ? { ...b, items: [...b.items, ''] } : b,
+                                ),
+                              }))
+                            }
+                            style={styles.routineAddLineBtn}
+                          >
+                            <Ionicons name="add" size={18} color={d.primary} />
+                            <Text style={[styles.routineAddLineText, { color: d.primary }]}>Add exercise line</Text>
+                          </Pressable>
                         </View>
                       ))}
-                    </View>
-                  ))}
+                      <Pressable
+                        onPress={() =>
+                          updateDraft((prev) => ({
+                            ...prev,
+                            blocks: [...prev.blocks, { heading: 'Exercises', items: [''] }],
+                          }))
+                        }
+                        style={[styles.routineAddSectionBtn, { borderColor: d.outlineGhost15 }]}
+                      >
+                        <Ionicons name="albums-outline" size={18} color={d.primary} />
+                        <Text style={[styles.modalGhostText, { color: d.primary }]}>Add section</Text>
+                      </Pressable>
+                      <View style={styles.modalActions}>
+                        <Pressable
+                          onPress={cancelProgramEdit}
+                          style={[styles.modalGhostBtn, { borderColor: d.outlineGhost15 }]}
+                        >
+                          <Text style={[styles.modalGhostText, { color: d.primary }]}>Cancel</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => void saveProgramEdits()}
+                          style={[styles.modalPrimaryBtn, { backgroundColor: d.primaryContainer }]}
+                        >
+                          <Text style={styles.modalPrimaryText}>Save</Text>
+                        </Pressable>
+                      </View>
+                      <Pressable onPress={confirmDeleteProgram} style={styles.routineResetLink}>
+                        <Text style={[styles.routineResetLinkText, { color: d.error }]}>Delete program…</Text>
+                      </Pressable>
+                      {programs.length > 0 ? (
+                        <Pressable onPress={confirmResetAllPrograms} style={styles.routineResetLink}>
+                          <Text style={[styles.routineResetLinkText, { color: d.error }]}>
+                            Reset all programs to samples…
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      {routineModal.draft.blocks.map((block, bi) => (
+                        <View key={`view-block-${bi}-${block.heading}`} style={styles.routineBlock}>
+                          <Text style={[styles.routineBlockHeading, { color: d.secondary }]}>{block.heading}</Text>
+                          {block.items.map((item, i) => (
+                            <View key={`view-item-${bi}-${i}`} style={styles.routineItemRow}>
+                              <Text style={[styles.routineItemIndex, { color: d.outline }]}>{i + 1}.</Text>
+                              <Text style={[styles.routineItemText, { color: d.onSurface }]}>{item}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      ))}
+                    </>
+                  )}
                 </ScrollView>
-                {sessionStarted ? (
-                  <Pressable
-                    onPress={addRoutineExercisesToSession}
-                    style={[styles.routinePrimaryBtn, { backgroundColor: d.primaryContainer }]}
-                  >
-                    <Text style={styles.modalPrimaryText}>Add all to session</Text>
-                  </Pressable>
-                ) : (
-                  <Text style={[styles.routineModalHint, { color: d.onSurfaceVariant }]}>
-                    Start a workout to load this list into your log.
-                  </Text>
-                )}
-                <Pressable
-                  onPress={() => setRoutineViewer(null)}
-                  style={[styles.routineCloseBtn, { borderColor: d.outlineGhost15 }]}
-                >
-                  <Text style={[styles.modalGhostText, { color: d.primary }]}>Close</Text>
-                </Pressable>
+
+                {!routineModal.editMode ? (
+                  <>
+                    {sessionStarted ? (
+                      <Pressable
+                        onPress={addRoutineExercisesToSession}
+                        style={[styles.routinePrimaryBtn, { backgroundColor: d.primaryContainer }]}
+                      >
+                        <Text style={styles.modalPrimaryText}>Add all to session</Text>
+                      </Pressable>
+                    ) : (
+                      <Text style={[styles.routineModalHint, { color: d.onSurfaceVariant }]}>
+                        Start a workout to load this list into your log.
+                      </Text>
+                    )}
+                    <Pressable
+                      onPress={() => setRoutineModal(null)}
+                      style={[styles.routineCloseBtn, { borderColor: d.outlineGhost15 }]}
+                    >
+                      <Text style={[styles.modalGhostText, { color: d.primary }]}>Close</Text>
+                    </Pressable>
+                  </>
+                ) : null}
               </>
             ) : null}
           </Pressable>
@@ -599,43 +972,6 @@ export function WorkoutTrackerScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-  },
-  headerBlur: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    overflow: 'hidden',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm + 4,
-  },
-  avatarWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  avatarImg: {
-    width: '100%',
-    height: '100%',
-  },
-  wordmark: {
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: -0.6,
-  },
-  iconBtn: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 24,
   },
   flex: {
     flex: 1,
@@ -748,26 +1084,37 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   startSessionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: spacing.sm,
     padding: spacing.lg,
     borderRadius: 24,
     borderWidth: 2,
     borderStyle: 'dashed',
     marginBottom: spacing.xl,
   },
-  startSessionText: {
-    flex: 1,
+  startSessionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 12,
+  },
+  startSessionIconWrap: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   startSessionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 4,
+    lineHeight: 22,
+    includeFontPadding: false,
+    flexShrink: 0,
   },
   startSessionHint: {
     fontSize: 14,
     lineHeight: 20,
+    paddingLeft: 28 + 12,
   },
   pulseDot: {
     width: 8,
@@ -1075,5 +1422,123 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: spacing.md,
     alignItems: 'center',
+  },
+  programsLoading: {
+    minHeight: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+  },
+  programsHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  emptyProgramsCard: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: 20,
+    padding: spacing.lg + 8,
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  emptyProgramsTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: spacing.md,
+    textAlign: 'center',
+  },
+  emptyProgramsBody: {
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
+    maxWidth: 320,
+  },
+  addProgramPrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md + 2,
+    paddingHorizontal: spacing.lg + 8,
+    borderRadius: 16,
+  },
+  sampleProgramsLink: {
+    marginTop: spacing.md,
+    padding: spacing.sm,
+  },
+  sampleProgramsLinkText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  routineModalTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  routineEditIconBtn: {
+    padding: spacing.sm,
+    borderRadius: 12,
+  },
+  routineEditBlockHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  routineSectionTitleInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.sm,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  routineEditItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  routineItemEditInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    fontSize: 15,
+  },
+  routineAddLineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  routineAddLineText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  routineAddSectionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+  },
+  routineResetLink: {
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  routineResetLinkText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
