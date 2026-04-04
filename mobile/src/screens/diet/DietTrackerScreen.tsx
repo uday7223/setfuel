@@ -240,7 +240,7 @@ export function DietTrackerScreen() {
               <View style={styles.actions}>
                 <Pressable
                   onPress={openLogMeal}
-                  style={({ pressed }) => [styles.actionFlex, pressed && { transform: [{ scale: 0.96 }] }]}
+                  style={({ pressed }) => [styles.actionFlex, pressed && styles.actionPressed]}
                 >
                   <LinearGradient
                     colors={[d.primary, '#0ea5e9']}
@@ -248,19 +248,31 @@ export function DietTrackerScreen() {
                     end={{ x: 1, y: 1 }}
                     style={styles.gradientBtn}
                   >
-                    <Ionicons name="add" size={22} color="#001f2e" />
-                    <Text style={styles.gradientBtnText}>Log meal</Text>
+                    <View style={styles.actionBtnInner} pointerEvents="none">
+                      <View style={styles.actionIconWrap}>
+                        <Ionicons name="add" size={20} color="#001f2e" />
+                      </View>
+                      <Text style={styles.gradientBtnText}>Log meal</Text>
+                    </View>
                   </LinearGradient>
                 </Pressable>
                 <Pressable
                   onPress={openQuickAdd}
-                  style={({ pressed }) => [
-                    styles.outlineBtn,
-                    pressed && { transform: [{ scale: 0.96 }] },
-                  ]}
+                  style={({ pressed }) => [styles.actionFlex, pressed && styles.actionPressed]}
                 >
-                  <Ionicons name="flash" size={18} color={d.primary} />
-                  <Text style={styles.outlineBtnText}>Quick add</Text>
+                  <LinearGradient
+                    colors={[d.primary, '#0ea5e9']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.gradientBtn}
+                  >
+                    <View style={styles.actionBtnInner} pointerEvents="none">
+                      <View style={styles.actionIconWrap}>
+                        <Ionicons name="flash" size={20} color="#001f2e" />
+                      </View>
+                      <Text style={styles.gradientBtnText}>Quick add</Text>
+                    </View>
+                  </LinearGradient>
                 </Pressable>
               </View>
 
@@ -466,45 +478,50 @@ const styles = StyleSheet.create({
   /* ── Action buttons ────────────────────────────── */
   actions: {
     flexDirection: 'row',
+    alignItems: 'stretch',
     gap: spacing.md,
     marginBottom: spacing.lg + spacing.md,
   },
   actionFlex: {
     flex: 1,
   },
+  actionPressed: {
+    transform: [{ scale: 0.96 }],
+    opacity: 0.95,
+  },
   gradientBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    height: 56,
+    width: '100%',
+    minHeight: 56,
     borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md + spacing.xs,
     shadowColor: d.primary,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 6,
   },
+  actionBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    columnGap: 12,
+    maxWidth: '100%',
+  },
+  actionIconWrap: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   gradientBtnText: {
     color: '#001f2e',
     fontSize: 16,
     fontWeight: '700',
-  },
-  outlineBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    height: 56,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: `${d.primary}33`,
-  },
-  outlineBtnText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: d.primary,
+    lineHeight: 22,
+    includeFontPadding: false,
+    flexShrink: 0,
   },
 
   /* ── Section header ────────────────────────────── */

@@ -519,13 +519,15 @@ export function WorkoutTrackerScreen() {
                   },
                 ]}
               >
-                <Ionicons name="play-circle-outline" size={28} color={d.primary} />
-                <View style={styles.startSessionText}>
+                <View style={styles.startSessionTitleRow}>
+                  <View style={styles.startSessionIconWrap}>
+                    <Ionicons name="play-circle-outline" size={24} color={d.primary} />
+                  </View>
                   <Text style={[styles.startSessionTitle, { color: d.onSurface }]}>Start workout</Text>
-                  <Text style={[styles.startSessionHint, { color: d.onSurfaceVariant }]}>
-                    Log sets and exercises for this session. Data stays on this device until sync ships.
-                  </Text>
                 </View>
+                <Text style={[styles.startSessionHint, { color: d.onSurfaceVariant }]}>
+                  Log sets and exercises for this session. Data stays on this device until sync ships.
+                </Text>
               </Pressable>
             ) : (
               <>
@@ -1082,26 +1084,37 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   startSessionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: spacing.sm,
     padding: spacing.lg,
     borderRadius: 24,
     borderWidth: 2,
     borderStyle: 'dashed',
     marginBottom: spacing.xl,
   },
-  startSessionText: {
-    flex: 1,
+  startSessionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 12,
+  },
+  startSessionIconWrap: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   startSessionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 4,
+    lineHeight: 22,
+    includeFontPadding: false,
+    flexShrink: 0,
   },
   startSessionHint: {
     fontSize: 14,
     lineHeight: 20,
+    paddingLeft: 28 + 12,
   },
   pulseDot: {
     width: 8,
