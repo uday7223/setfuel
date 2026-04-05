@@ -30,7 +30,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "./plugins/withAsyncStorageMavenRepo.js"
     ],
     "extra": {
       "eas": {
