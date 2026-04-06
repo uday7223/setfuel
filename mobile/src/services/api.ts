@@ -1,15 +1,11 @@
 /**
- * Centralised API client. Right now every call resolves locally.
- * When the backend is live, flip `USE_LOCAL` to false and set `BASE_URL`.
- *
- * Swap strategy:
- *   1. Set BASE_URL to your server (e.g. https://api.setfuel.app).
- *   2. Set USE_LOCAL = false.
- *   3. Each service function already returns Promises — nothing else changes.
+ * Centralised API client. `BASE_URL` and `USE_LOCAL` live in `src/constant.ts`
+ * (overridable via `.env` — see `mobile/.env.example`).
  */
 
-export const BASE_URL = ''; // e.g. 'https://api.setfuel.app/v1'
-export const USE_LOCAL = true;
+import { BASE_URL, USE_LOCAL } from '../constant';
+
+export { BASE_URL, USE_LOCAL };
 
 let _authToken: string | null = null;
 

@@ -7,7 +7,7 @@
  */
 
 import type { CreateMealPayload, DailySummary, Macros, Meal } from '../types';
-import { localId, USE_LOCAL } from './api';
+import { apiFetch, localId, USE_LOCAL } from './api';
 
 const DAILY_GOAL_KCAL = 2500;
 
@@ -60,8 +60,7 @@ function resetLocalMeals() {
 
 export async function getMeals(): Promise<Meal[]> {
   if (USE_LOCAL) return [..._localMeals];
-  // return apiFetch<Meal[]>('/meals');
-  return [];
+  return apiFetch<Meal[]>('/meals');
 }
 
 export async function addMeal(payload: CreateMealPayload): Promise<Meal> {
@@ -80,8 +79,7 @@ export async function addMeal(payload: CreateMealPayload): Promise<Meal> {
     _localMeals = [meal, ..._localMeals];
     return meal;
   }
-  // return apiFetch<Meal>('/meals', { method: 'POST', body: payload });
-  return meal;
+  return apiFetch<Meal>('/meals', { method: 'POST', body: payload });
 }
 
 export async function removeMeal(id: string): Promise<void> {
@@ -89,7 +87,7 @@ export async function removeMeal(id: string): Promise<void> {
     _localMeals = _localMeals.filter((m) => m.id !== id);
     return;
   }
-  // return apiFetch<void>(`/meals/${id}`, { method: 'DELETE' });
+  await apiFetch<void>(`/meals/${id}`, { method: 'DELETE' });
 }
 
 export async function getDailySummary(): Promise<DailySummary> {
@@ -109,8 +107,7 @@ export async function getDailySummary(): Promise<DailySummary> {
       mealsLogged: _localMeals.length,
     };
   }
-  // return apiFetch<DailySummary>('/meals/daily-summary');
-  return { totalKcal: 0, goalKcal: DAILY_GOAL_KCAL, macros: { protein: 0, carbs: 0, fats: 0 }, mealsLogged: 0 };
+  return apiFetch<DailySummary>('/meals/daily-summary');
 }
 
 export { DAILY_GOAL_KCAL, resetLocalMeals };

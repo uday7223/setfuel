@@ -7,7 +7,7 @@
  */
 
 import type { ExerciseEntry, PersonalRoutine, SetEntry, WorkoutSession } from '../types';
-import { localId, USE_LOCAL } from './api';
+import { apiFetch, localId, USE_LOCAL } from './api';
 
 /* ── Local state (simulates server persistence) ────────────── */
 
@@ -20,8 +20,7 @@ export async function getPrograms(): Promise<PersonalRoutine[]> {
     const { PERSONAL_ROUTINES } = await import('../data/personalRoutines');
     return PERSONAL_ROUTINES;
   }
-  // return apiFetch<PersonalRoutine[]>('/programs');
-  return [];
+  return apiFetch<PersonalRoutine[]>('/programs');
 }
 
 /* ── Session lifecycle ─────────────────────────────────────── */
@@ -36,14 +35,12 @@ export async function startSession(): Promise<WorkoutSession> {
     _activeSession = session;
     return session;
   }
-  // return apiFetch<WorkoutSession>('/sessions', { method: 'POST' });
-  return session;
+  return apiFetch<WorkoutSession>('/sessions', { method: 'POST' });
 }
 
 export async function getActiveSession(): Promise<WorkoutSession | null> {
   if (USE_LOCAL) return _activeSession;
-  // return apiFetch<WorkoutSession | null>('/sessions/active');
-  return null;
+  return apiFetch<WorkoutSession | null>('/sessions/active');
 }
 
 export async function endSession(): Promise<WorkoutSession | null> {
@@ -54,8 +51,9 @@ export async function endSession(): Promise<WorkoutSession | null> {
     _activeSession = null;
     return finished;
   }
-  // return apiFetch<WorkoutSession>(`/sessions/${_activeSession?.id}/end`, { method: 'POST' });
-  return null;
+  const active = await getActiveSession();
+  if (!active) return null;
+  return apiFetch<WorkoutSession>(`/sessions/${active.id}/end`, { method: 'POST' });
 }
 
 /* ── Exercise CRUD (within active session) ─────────────────── */
@@ -68,8 +66,18 @@ export async function addExercise(name: string): Promise<ExerciseEntry> {
   };
   if (USE_LOCAL && _activeSession) {
     _activeSession.exercises.push(exercise);
+    return exercise;
   }
-  // return apiFetch<ExerciseEntry>(`/sessions/${_activeSession?.id}/exercises`, { method: 'POST', body: { name } });
+  if (!USE_LOCAL) {
+    const active = await getActiveSession();
+    if (!active) {
+      throw new Error('No active workout session');
+    }
+    return apiFetch<ExerciseEntry>(`/sessions/${active.id}/exercises`, {
+      method: 'POST',
+      body: { name: exercise.name },
+    });
+  }
   return exercise;
 }
 
@@ -78,7 +86,9 @@ export async function removeExercise(exerciseId: string): Promise<void> {
     _activeSession.exercises = _activeSession.exercises.filter((e) => e.id !== exerciseId);
     return;
   }
-  // return apiFetch<void>(`/exercises/${exerciseId}`, { method: 'DELETE' });
+  if (!USE_LOCAL) {
+    await apiFetch<void>(`/exercises/${exerciseId}`, { method: 'DELETE' });
+  }
 }
 
 export async function updateExerciseName(exerciseId: string, name: string): Promise<void> {
@@ -87,7 +97,9 @@ export async function updateExerciseName(exerciseId: string, name: string): Prom
     if (ex) ex.name = name;
     return;
   }
-  // return apiFetch<void>(`/exercises/${exerciseId}`, { method: 'PATCH', body: { name } });
+  if (!USE_LOCAL) {
+    await apiFetch<void>(`/exercises/${exerciseId}`, { method: 'PATCH', body: { name } });
+  }
 }
 
 /* ── Set CRUD (within an exercise) ─────────────────────────── */
@@ -97,8 +109,11 @@ export async function addSet(exerciseId: string): Promise<SetEntry> {
   if (USE_LOCAL && _activeSession) {
     const ex = _activeSession.exercises.find((e) => e.id === exerciseId);
     if (ex) ex.sets.push(set);
+    return set;
   }
-  // return apiFetch<SetEntry>(`/exercises/${exerciseId}/sets`, { method: 'POST' });
+  if (!USE_LOCAL) {
+    return apiFetch<SetEntry>(`/exercises/${exerciseId}/sets`, { method: 'POST' });
+  }
   return set;
 }
 
@@ -108,7 +123,9 @@ export async function removeSet(exerciseId: string, setId: string): Promise<void
     if (ex) ex.sets = ex.sets.filter((s) => s.id !== setId);
     return;
   }
-  // return apiFetch<void>(`/sets/${setId}`, { method: 'DELETE' });
+  if (!USE_LOCAL) {
+    await apiFetch<void>(`/sets/${setId}`, { method: 'DELETE' });
+  }
 }
 
 export async function updateSet(
@@ -125,7 +142,9 @@ export async function updateSet(
     }
     return;
   }
-  // return apiFetch<void>(`/sets/${setId}`, { method: 'PATCH', body: { [field]: value } });
+  if (!USE_LOCAL) {
+    await apiFetch<void>(`/sets/${setId}`, { method: 'PATCH', body: { [field]: value } });
+  }
 }
 
 export async function toggleSetDone(exerciseId: string, setId: string): Promise<boolean> {
@@ -135,7 +154,9 @@ export async function toggleSetDone(exerciseId: string, setId: string): Promise<
     if (set) set.done = !set.done;
     return set?.done ?? false;
   }
-  // const res = await apiFetch<{ done: boolean }>(`/sets/${setId}/toggle`, { method: 'POST' });
-  // return res.done;
+  if (!USE_LOCAL) {
+    const res = await apiFetch<{ done: boolean }>(`/sets/${setId}/toggle`, { method: 'POST' });
+    return res.done;
+  }
   return false;
 }
