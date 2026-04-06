@@ -3,6 +3,8 @@
 *.log
 .env
 .env.*
+!.env.example
+!**/.env.example
 
 mobile/node_modules/
 mobile/.expo/
