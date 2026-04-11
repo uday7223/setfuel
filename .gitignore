@@ -11,3 +11,6 @@ mobile/.expo/
 mobile/dist/
 
 backend/node_modules/
+
+# Nix-local PostgreSQL data + logs (see docs/nix.md)
+.setfuel/

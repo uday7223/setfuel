@@ -19,6 +19,10 @@
 - For Android: [Android Studio](https://developer.android.com/studio) + emulator or USB device with debugging
 - [Expo Go](https://expo.dev/go) on a physical device (optional quick preview)
 
+### Reproducible dev (Nix, optional)
+
+For pinned **Node 22**, **PostgreSQL 16** CLI, and scripted **DB + migrations** on macOS, Linux, or **WSL2**, see [docs/nix.md](docs/nix.md).
+
 ## Setup
 
 ```bash

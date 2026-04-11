@@ -4,8 +4,10 @@ Node.js **Express** + **PostgreSQL** (`pg`), TypeScript. Auth is not wired yet: 
 
 ## Prerequisites
 
-- Node 20+
+- Node 20+ (repo Nix flake pins **22**; see `../.nvmrc`)
 - PostgreSQL
+
+Optional: same Postgres + Node + migrations on macOS / Linux / **WSL2** via **Nix** — [docs/nix.md](../docs/nix.md).
 
 ## Setup
 
