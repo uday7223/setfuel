@@ -19,8 +19,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ExerciseEntry, PersonalRoutine, SetEntry } from '../../types';
+import { USE_LOCAL } from '../../constant';
 import { localId } from '../../services/api';
 import { PLACEHOLDER_AVATAR } from '../../services/userService';
+import { workoutService } from '../../services';
 import { AppHeader } from '../../components/ui/AppHeader';
 import { flattenRoutineItems } from '../../data/personalRoutines';
 import {
@@ -161,15 +163,65 @@ export function WorkoutTrackerScreen() {
   const [routineModal, setRoutineModal] = useState<RoutineModalState | null>(null);
   const [programs, setPrograms] = useState<PersonalRoutine[]>([]);
   const [programsLoading, setProgramsLoading] = useState(true);
+  const [programsError, setProgramsError] = useState<string | null>(null);
+  const [programsReloadKey, setProgramsReloadKey] = useState(0);
+  const apiDebounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const isApiMode = !USE_LOCAL;
+
+  useEffect(() => {
+    return () => {
+      Object.values(apiDebounceTimers.current).forEach(clearTimeout);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    loadRoutines().then((list) => {
-      if (!cancelled) setPrograms(list);
-    }).finally(() => {
-      if (!cancelled) setProgramsLoading(false);
-    });
-    return () => { cancelled = true; };
+    setProgramsLoading(true);
+    setProgramsError(null);
+    (async () => {
+      try {
+        if (USE_LOCAL) {
+          const list = await loadRoutines();
+          if (!cancelled) setPrograms(list);
+        } else {
+          const list = await workoutService.getPrograms();
+          if (!cancelled) setPrograms(list);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          const err = e as Error & { status?: number };
+          const hint = err.message ?? 'Could not load programs';
+          const suffix = typeof err.status === 'number' ? ` (HTTP ${err.status})` : '';
+          setProgramsError(`${hint}${suffix}`);
+          setPrograms([]);
+        }
+      } finally {
+        if (!cancelled) setProgramsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [programsReloadKey]);
+
+  /** Resume an in-progress server session after reload (API mode only). */
+  useEffect(() => {
+    if (USE_LOCAL) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const active = await workoutService.getActiveSession();
+        if (cancelled || !active || active.endedAt) return;
+        setSessionStarted(true);
+        setExercises(Array.isArray(active.exercises) ? active.exercises : []);
+      } catch {
+        /* non-fatal */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useFocusEffect(
@@ -181,18 +233,73 @@ export function WorkoutTrackerScreen() {
     }, [d.background]),
   );
 
-  const startWorkout = useCallback(() => {
+  const scheduleApiSync = useCallback(
+    (key: string, run: () => void | Promise<void>, ms = 550) => {
+      if (!isApiMode) return;
+      const t = apiDebounceTimers.current;
+      if (t[key]) clearTimeout(t[key]);
+      t[key] = setTimeout(() => {
+        void run();
+        delete t[key];
+      }, ms);
+    },
+    [isApiMode],
+  );
+
+  const startWorkout = useCallback(async () => {
+    if (isApiMode) {
+      try {
+        await workoutService.startSession();
+        setSessionStarted(true);
+        setExercises([]);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Could not start session';
+        if (Platform.OS === 'web') {
+          globalThis.alert?.(`Could not start workout.\n\n${msg}`);
+        } else {
+          Alert.alert('Could not start workout', msg);
+        }
+      }
+      return;
+    }
     setSessionStarted(true);
     setExercises([]);
-  }, []);
+  }, [isApiMode]);
+
+  const endWorkoutSession = useCallback(async () => {
+    if (isApiMode) {
+      try {
+        await workoutService.endSession();
+      } catch {
+        /* still leave the session UI */
+      }
+    }
+    setSessionStarted(false);
+    setExercises([]);
+  }, [isApiMode]);
 
   const openAddExercise = useCallback(() => {
     setNewExerciseName('');
     setExerciseModalOpen(true);
   }, []);
 
-  const confirmAddExercise = useCallback(() => {
+  const confirmAddExercise = useCallback(async () => {
     const name = newExerciseName.trim() || 'Exercise';
+    if (isApiMode) {
+      try {
+        const ex = await workoutService.addExercise(name);
+        setExercises((prev) => [...prev, ex]);
+        setExerciseModalOpen(false);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Could not add exercise';
+        if (Platform.OS === 'web') {
+          globalThis.alert?.(msg);
+        } else {
+          Alert.alert('Add exercise', msg);
+        }
+      }
+      return;
+    }
     setExercises((prev) => [
       ...prev,
       {
@@ -202,21 +309,41 @@ export function WorkoutTrackerScreen() {
       },
     ]);
     setExerciseModalOpen(false);
-  }, [newExerciseName]);
+  }, [newExerciseName, isApiMode]);
 
-  const updateExerciseName = useCallback((exerciseId: string, name: string) => {
-    setExercises((prev) => prev.map((e) => (e.id === exerciseId ? { ...e, name } : e)));
-  }, []);
+  const updateExerciseName = useCallback(
+    (exerciseId: string, name: string) => {
+      setExercises((prev) => prev.map((e) => (e.id === exerciseId ? { ...e, name } : e)));
+      scheduleApiSync(`ex-name:${exerciseId}`, () => workoutService.updateExerciseName(exerciseId, name));
+    },
+    [scheduleApiSync],
+  );
 
-  const addSet = useCallback((exerciseId: string) => {
-    setExercises((prev) =>
-      prev.map((e) =>
-        e.id === exerciseId
-          ? { ...e, sets: [...e.sets, { id: localId(), reps: '10', weightKg: '', done: false }] }
-          : e,
-      ),
-    );
-  }, []);
+  const addSet = useCallback(
+    async (exerciseId: string) => {
+      if (isApiMode) {
+        try {
+          const set = await workoutService.addSet(exerciseId);
+          setExercises((prev) =>
+            prev.map((e) => (e.id === exerciseId ? { ...e, sets: [...e.sets, set] } : e)),
+          );
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Could not add set';
+          if (Platform.OS === 'web') globalThis.alert?.(msg);
+          else Alert.alert('Add set', msg);
+        }
+        return;
+      }
+      setExercises((prev) =>
+        prev.map((e) =>
+          e.id === exerciseId
+            ? { ...e, sets: [...e.sets, { id: localId(), reps: '10', weightKg: '', done: false }] }
+            : e,
+        ),
+      );
+    },
+    [isApiMode],
+  );
 
   const updateSet = useCallback(
     (exerciseId: string, setId: string, field: 'reps' | 'weightKg', value: string) => {
@@ -233,37 +360,109 @@ export function WorkoutTrackerScreen() {
           };
         }),
       );
+      scheduleApiSync(`set:${exerciseId}:${setId}:${field}`, () =>
+        workoutService.updateSet(exerciseId, setId, field, next),
+      );
     },
-    [],
+    [scheduleApiSync],
   );
 
-  const toggleSetDone = useCallback((exerciseId: string, setId: string) => {
-    setExercises((prev) =>
-      prev.map((e) => {
-        if (e.id !== exerciseId) return e;
-        return {
-          ...e,
-          sets: e.sets.map((s) => (s.id === setId ? { ...s, done: !s.done } : s)),
-        };
-      }),
-    );
-  }, []);
+  const toggleSetDone = useCallback(
+    async (exerciseId: string, setId: string) => {
+      if (isApiMode) {
+        try {
+          const done = await workoutService.toggleSetDone(exerciseId, setId);
+          setExercises((prev) =>
+            prev.map((e) => {
+              if (e.id !== exerciseId) return e;
+              return {
+                ...e,
+                sets: e.sets.map((s) => (s.id === setId ? { ...s, done } : s)),
+              };
+            }),
+          );
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Could not update set';
+          if (Platform.OS === 'web') globalThis.alert?.(msg);
+          else Alert.alert('Set', msg);
+        }
+        return;
+      }
+      setExercises((prev) =>
+        prev.map((e) => {
+          if (e.id !== exerciseId) return e;
+          return {
+            ...e,
+            sets: e.sets.map((s) => (s.id === setId ? { ...s, done: !s.done } : s)),
+          };
+        }),
+      );
+    },
+    [isApiMode],
+  );
 
-  const removeSet = useCallback((exerciseId: string, setId: string) => {
-    setExercises((prev) =>
-      prev.map((e) =>
-        e.id === exerciseId ? { ...e, sets: e.sets.filter((s) => s.id !== setId) } : e,
-      ),
-    );
-  }, []);
+  const removeSet = useCallback(
+    async (exerciseId: string, setId: string) => {
+      if (isApiMode) {
+        try {
+          await workoutService.removeSet(exerciseId, setId);
+          setExercises((prev) =>
+            prev.map((e) =>
+              e.id === exerciseId ? { ...e, sets: e.sets.filter((s) => s.id !== setId) } : e,
+            ),
+          );
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Could not remove set';
+          if (Platform.OS === 'web') globalThis.alert?.(msg);
+          else Alert.alert('Remove set', msg);
+        }
+        return;
+      }
+      setExercises((prev) =>
+        prev.map((e) =>
+          e.id === exerciseId ? { ...e, sets: e.sets.filter((s) => s.id !== setId) } : e,
+        ),
+      );
+    },
+    [isApiMode],
+  );
 
-  const removeExercise = useCallback((exerciseId: string) => {
-    setExercises((prev) => prev.filter((e) => e.id !== exerciseId));
-  }, []);
+  const removeExercise = useCallback(
+    async (exerciseId: string) => {
+      if (isApiMode) {
+        try {
+          await workoutService.removeExercise(exerciseId);
+          setExercises((prev) => prev.filter((e) => e.id !== exerciseId));
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Could not remove exercise';
+          if (Platform.OS === 'web') globalThis.alert?.(msg);
+          else Alert.alert('Remove exercise', msg);
+        }
+        return;
+      }
+      setExercises((prev) => prev.filter((e) => e.id !== exerciseId));
+    },
+    [isApiMode],
+  );
 
-  const addRoutineExercisesToSession = useCallback(() => {
+  const addRoutineExercisesToSession = useCallback(async () => {
     if (!routineModal || !sessionStarted) return;
     const names = flattenRoutineItems(routineModal.draft).filter((n) => n.trim().length > 0);
+    if (isApiMode) {
+      try {
+        const added: ExerciseEntry[] = [];
+        for (const name of names) {
+          added.push(await workoutService.addExercise(name));
+        }
+        setExercises((prev) => [...prev, ...added]);
+        setRoutineModal(null);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Could not add exercises';
+        if (Platform.OS === 'web') globalThis.alert?.(msg);
+        else Alert.alert('Add to session', msg);
+      }
+      return;
+    }
     setExercises((prev) => [
       ...prev,
       ...names.map((name) => ({
@@ -273,7 +472,7 @@ export function WorkoutTrackerScreen() {
       })),
     ]);
     setRoutineModal(null);
-  }, [routineModal, sessionStarted]);
+  }, [routineModal, sessionStarted, isApiMode]);
 
   const openRoutineModal = useCallback((r: PersonalRoutine, editMode = false) => {
     setRoutineModal({ draft: cloneRoutine(r), editMode });
@@ -289,22 +488,52 @@ export function WorkoutTrackerScreen() {
   }, []);
 
   const handleAddProgram = useCallback(async () => {
+    if (isApiMode) {
+      try {
+        const blank = createBlankProgram();
+        const created = await workoutService.createProgram({
+          title: blank.title,
+          dayLabel: blank.dayLabel,
+          blocks: blank.blocks,
+        });
+        setPrograms((prev) => [...prev, created]);
+        openRoutineModal(created, true);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Could not create program';
+        if (Platform.OS === 'web') globalThis.alert?.(msg);
+        else Alert.alert('Create program', msg);
+      }
+      return;
+    }
     const created = createBlankProgram();
-    const next = [...programs, created];
-    setPrograms(next);
-    await saveRoutines(next);
+    let snapshot: PersonalRoutine[] = [];
+    setPrograms((prev) => {
+      snapshot = [...prev, created];
+      return snapshot;
+    });
+    await saveRoutines(snapshot);
     openRoutineModal(created, true);
-  }, [programs, createBlankProgram, openRoutineModal]);
+  }, [createBlankProgram, openRoutineModal, isApiMode]);
 
-  /** Loads PERSONAL_ROUTINES from code into storage + React state (see routinesStorage). */
+  /** Loads bundled sample programs into storage (local) or API (remote). */
   const applyBundledSamplePrograms = useCallback(() => {
+    if (isApiMode) {
+      workoutService
+        .replaceProgramsWithBundledSamples()
+        .then((next) => {
+          setPrograms(next);
+          setRoutineModal(null);
+        })
+        .catch(reportSampleProgramsError);
+      return;
+    }
     resetRoutinesToDefaults()
       .then((next) => {
         setPrograms(next);
         setRoutineModal(null);
       })
       .catch(reportSampleProgramsError);
-  }, []);
+  }, [isApiMode]);
 
   /** Alert dismiss + async storage can race on native; web has no Alert implementation at all. */
   const scheduleApplyBundledSamples = useCallback(() => {
@@ -345,25 +574,56 @@ export function WorkoutTrackerScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            const next = programs.filter((p) => p.id !== id);
-            setPrograms(next);
+            if (isApiMode) {
+              try {
+                await workoutService.deleteProgram(id);
+                setPrograms((prev) => prev.filter((p) => p.id !== id));
+                setRoutineModal(null);
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : 'Could not delete';
+                if (Platform.OS === 'web') globalThis.alert?.(msg);
+                else Alert.alert('Delete program', msg);
+              }
+              return;
+            }
+            let next: PersonalRoutine[] = [];
+            setPrograms((prev) => {
+              next = prev.filter((p) => p.id !== id);
+              return next;
+            });
             await saveRoutines(next);
             setRoutineModal(null);
           },
         },
       ],
     );
-  }, [routineModal, programs]);
+  }, [routineModal, isApiMode]);
 
   const saveProgramEdits = useCallback(async () => {
     if (!routineModal?.editMode) return;
     const cleaned = sanitizeRoutine(routineModal.draft);
+    if (isApiMode) {
+      try {
+        const updated = await workoutService.updateProgram(cleaned.id, {
+          title: cleaned.title,
+          dayLabel: cleaned.dayLabel,
+          blocks: cleaned.blocks,
+        });
+        setPrograms((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+        setRoutineModal({ draft: cloneRoutine(updated), editMode: false });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Could not save program';
+        if (Platform.OS === 'web') globalThis.alert?.(msg);
+        else Alert.alert('Save program', msg);
+      }
+      return;
+    }
     const exists = programs.some((p) => p.id === cleaned.id);
     const next = exists ? programs.map((p) => (p.id === cleaned.id ? cleaned : p)) : [...programs, cleaned];
     setPrograms(next);
     await saveRoutines(next);
     setRoutineModal({ draft: cleaned, editMode: false });
-  }, [routineModal, programs]);
+  }, [routineModal, programs, isApiMode]);
 
   const cancelProgramEdit = useCallback(() => {
     setRoutineModal((m) => {
@@ -397,16 +657,21 @@ export function WorkoutTrackerScreen() {
     );
   }, [scheduleApplyBundledSamples]);
 
-  const openExerciseMenu = useCallback((exerciseId: string) => {
-    Alert.alert('Exercise', undefined, [
-      {
-        text: 'Remove exercise',
-        style: 'destructive',
-        onPress: () => removeExercise(exerciseId),
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [removeExercise]);
+  const openExerciseMenu = useCallback(
+    (exerciseId: string) => {
+      Alert.alert('Exercise', undefined, [
+        {
+          text: 'Remove exercise',
+          style: 'destructive',
+          onPress: () => {
+            void removeExercise(exerciseId);
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    },
+    [removeExercise],
+  );
 
   return (
     <View style={[styles.root, { backgroundColor: d.background }]}>
@@ -433,7 +698,7 @@ export function WorkoutTrackerScreen() {
 
             <View style={styles.programsHeaderRow}>
               <Text style={[styles.sectionTitle, { color: d.onSurface }]}>Your programs</Text>
-              {!programsLoading && programs.length > 0 ? (
+              {!programsLoading && !programsError && programs.length > 0 ? (
                 <View style={styles.programsHeaderActions}>
                   <Pressable
                     onPress={() => void handleAddProgram()}
@@ -459,13 +724,28 @@ export function WorkoutTrackerScreen() {
               <View style={styles.programsLoading}>
                 <ActivityIndicator size="small" color={d.primary} />
               </View>
+            ) : programsError ? (
+              <View style={[styles.programsErrorCard, { borderColor: d.outlineVariant }]}>
+                <Text style={[styles.programsErrorTitle, { color: d.onSurface }]}>Programs unavailable</Text>
+                <Text style={[styles.programsErrorBody, { color: d.onSurfaceVariant }]}>{programsError}</Text>
+                <Pressable
+                  onPress={() => {
+                    setProgramsError(null);
+                    setProgramsReloadKey((n) => n + 1);
+                  }}
+                  style={[styles.programsRetryBtn, { backgroundColor: d.primaryContainer }]}
+                >
+                  <Text style={styles.modalPrimaryText}>RETRY</Text>
+                </Pressable>
+              </View>
             ) : programs.length === 0 ? (
               <View style={[styles.emptyProgramsCard, { borderColor: d.outlineVariant }]}>
                 <Ionicons name="albums-outline" size={40} color={d.outline} />
                 <Text style={[styles.emptyProgramsTitle, { color: d.onSurface }]}>No programs yet</Text>
                 <Text style={[styles.emptyProgramsBody, { color: d.onSurfaceVariant }]}>
-                  Create a training split — add days, sections, and exercises. Everything stays on this device
-                  until you sync with a backend.
+                  {isApiMode
+                    ? 'Create a training split — add days, sections, and exercises. Programs are saved to your account on the server.'
+                    : 'Create a training split — add days, sections, and exercises. Everything stays on this device until you sync with a backend.'}
                 </Text>
                 <Pressable
                   onPress={() => void handleAddProgram()}
@@ -510,7 +790,7 @@ export function WorkoutTrackerScreen() {
           <View style={styles.pagePad}>
             {!sessionStarted ? (
               <Pressable
-                onPress={startWorkout}
+                onPress={() => void startWorkout()}
                 style={({ pressed }) => [
                   styles.startSessionCard,
                   {
@@ -526,7 +806,9 @@ export function WorkoutTrackerScreen() {
                   <Text style={[styles.startSessionTitle, { color: d.onSurface }]}>Start workout</Text>
                 </View>
                 <Text style={[styles.startSessionHint, { color: d.onSurfaceVariant }]}>
-                  Log sets and exercises for this session. Data stays on this device until sync ships.
+                  {isApiMode
+                    ? 'Log sets and exercises for this session. Your active workout is saved on the server until you end it.'
+                    : 'Log sets and exercises for this session. Data stays on this device until sync ships.'}
                 </Text>
               </Pressable>
             ) : (
@@ -537,10 +819,7 @@ export function WorkoutTrackerScreen() {
                     <Text style={[styles.activeTitle, { color: d.onSurface }]}>Active session</Text>
                   </View>
                   <Pressable
-                    onPress={() => {
-                      setSessionStarted(false);
-                      setExercises([]);
-                    }}
+                    onPress={() => void endWorkoutSession()}
                     style={[styles.endSessionBtn, { backgroundColor: d.error }]}
                   >
                     <Text style={[styles.endSessionLabel, { color: d.onError }]}>END SESSION</Text>
@@ -609,8 +888,8 @@ export function WorkoutTrackerScreen() {
                             placeholderTextColor={d.outline}
                           />
                           <View style={styles.doneCol}>
-                            <Pressable
-                              onPress={() => toggleSetDone(ex.id, s.id)}
+                        <Pressable
+                          onPress={() => void toggleSetDone(ex.id, s.id)}
                               style={[
                                 styles.doneBtn,
                                 {
@@ -631,7 +910,7 @@ export function WorkoutTrackerScreen() {
                             </Pressable>
                             {ex.sets.length > 1 ? (
                               <Pressable
-                                onPress={() => removeSet(ex.id, s.id)}
+                                onPress={() => void removeSet(ex.id, s.id)}
                                 hitSlop={6}
                                 style={styles.removeSetBtn}
                               >
@@ -646,14 +925,14 @@ export function WorkoutTrackerScreen() {
 
                       <View style={styles.exActions}>
                         <Pressable
-                          onPress={() => addSet(ex.id)}
+                          onPress={() => void addSet(ex.id)}
                           style={[styles.addSetBtn, { backgroundColor: d.surfaceContainerHighest }]}
                         >
                           <Ionicons name="add" size={18} color={d.primary} />
                           <Text style={[styles.addSetLabel, { color: d.primary }]}>ADD SET</Text>
                         </Pressable>
                         <Pressable
-                          onPress={() => removeExercise(ex.id)}
+                          onPress={() => void removeExercise(ex.id)}
                           style={[styles.trashBtn, { backgroundColor: d.surfaceContainerHighest }]}
                         >
                           <Ionicons name="trash-outline" size={20} color={d.outline} />
@@ -700,7 +979,7 @@ export function WorkoutTrackerScreen() {
               style={[styles.modalInput, { color: d.onSurface, borderColor: d.outlineVariant }]}
               autoFocus
               returnKeyType="done"
-              onSubmitEditing={confirmAddExercise}
+              onSubmitEditing={() => void confirmAddExercise()}
             />
             <View style={styles.modalActions}>
               <Pressable
@@ -710,7 +989,7 @@ export function WorkoutTrackerScreen() {
                 <Text style={[styles.modalGhostText, { color: d.primary }]}>Cancel</Text>
               </Pressable>
               <Pressable
-                onPress={confirmAddExercise}
+                onPress={() => void confirmAddExercise()}
                 style={[styles.modalPrimaryBtn, { backgroundColor: d.primaryContainer }]}
               >
                 <Text style={styles.modalPrimaryText}>Add</Text>
@@ -942,7 +1221,7 @@ export function WorkoutTrackerScreen() {
                   <>
                     {sessionStarted ? (
                       <Pressable
-                        onPress={addRoutineExercisesToSession}
+                        onPress={() => void addRoutineExercisesToSession()}
                         style={[styles.routinePrimaryBtn, { backgroundColor: d.primaryContainer }]}
                       >
                         <Text style={styles.modalPrimaryText}>Add all to session</Text>
@@ -1428,6 +1707,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: spacing.xl,
+  },
+  programsErrorCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+    alignItems: 'center',
+  },
+  programsErrorTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  programsErrorBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+  },
+  programsRetryBtn: {
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 999,
   },
   programsHeaderActions: {
     flexDirection: 'row',

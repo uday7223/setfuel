@@ -23,6 +23,72 @@ export async function getPrograms(): Promise<PersonalRoutine[]> {
   return apiFetch<PersonalRoutine[]>('/programs');
 }
 
+type ProgramWriteBody = {
+  title: string;
+  dayLabel?: string;
+  blocks: PersonalRoutine['blocks'];
+};
+
+export async function createProgram(body: ProgramWriteBody): Promise<PersonalRoutine> {
+  if (USE_LOCAL) {
+    throw new Error('createProgram is only used when USE_LOCAL is false');
+  }
+  return apiFetch<PersonalRoutine>('/programs', {
+    method: 'POST',
+    body: {
+      title: body.title,
+      ...(body.dayLabel ? { dayLabel: body.dayLabel } : {}),
+      blocks: body.blocks,
+    },
+  });
+}
+
+export async function updateProgram(id: string, body: ProgramWriteBody): Promise<PersonalRoutine> {
+  if (USE_LOCAL) {
+    throw new Error('updateProgram is only used when USE_LOCAL is false');
+  }
+  return apiFetch<PersonalRoutine>(`/programs/${id}`, {
+    method: 'PUT',
+    body: {
+      title: body.title,
+      ...(body.dayLabel ? { dayLabel: body.dayLabel } : {}),
+      blocks: body.blocks,
+    },
+  });
+}
+
+export async function deleteProgram(id: string): Promise<void> {
+  if (USE_LOCAL) {
+    throw new Error('deleteProgram is only used when USE_LOCAL is false');
+  }
+  await apiFetch<void>(`/programs/${id}`, { method: 'DELETE' });
+}
+
+/** Deletes all remote programs and re-creates them from bundled `PERSONAL_ROUTINES`. */
+export async function replaceProgramsWithBundledSamples(): Promise<PersonalRoutine[]> {
+  if (USE_LOCAL) {
+    throw new Error('replaceProgramsWithBundledSamples is only used when USE_LOCAL is false');
+  }
+  const existing = await apiFetch<PersonalRoutine[]>('/programs');
+  for (const p of existing) {
+    await apiFetch<void>(`/programs/${p.id}`, { method: 'DELETE' });
+  }
+  const { PERSONAL_ROUTINES } = await import('../data/personalRoutines');
+  const created: PersonalRoutine[] = [];
+  for (const r of PERSONAL_ROUTINES) {
+    const row = await apiFetch<PersonalRoutine>('/programs', {
+      method: 'POST',
+      body: {
+        title: r.title,
+        ...(r.dayLabel ? { dayLabel: r.dayLabel } : {}),
+        blocks: r.blocks,
+      },
+    });
+    created.push(row);
+  }
+  return created;
+}
+
 /* ── Session lifecycle ─────────────────────────────────────── */
 
 export async function startSession(): Promise<WorkoutSession> {
