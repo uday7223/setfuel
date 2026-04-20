@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Macros, Meal } from '../../types';
+import { BASE_URL, USE_LOCAL } from '../../constant';
 import { mealService, userService } from '../../services';
 import { AppHeader } from '../../components/ui/AppHeader';
 import { dashboard, spacing } from '../../theme';
@@ -32,6 +33,8 @@ export function DietTrackerScreen() {
 
   const [meals, setMeals] = useState<Meal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [avatarUri, setAvatarUri] = useState<string | undefined>();
   const [modalOpen, setModalOpen] = useState(false);
   const [quickMode, setQuickMode] = useState(false);
@@ -41,17 +44,36 @@ export function DietTrackerScreen() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [fetchedMeals, profile] = await Promise.all([
-        mealService.getMeals(),
-        userService.getProfile(),
-      ]);
-      if (cancelled) return;
-      setMeals(fetchedMeals);
-      setAvatarUri(profile.avatarUri);
-      setLoading(false);
+      setLoading(true);
+      setLoadError(null);
+      try {
+        if (!USE_LOCAL && !BASE_URL.trim()) {
+          throw new Error(
+            'API mode is on but EXPO_PUBLIC_API_BASE_URL is empty. Set it in mobile/.env (include /v1). On Android emulator use 10.0.2.2 instead of localhost.',
+          );
+        }
+        const [fetchedMeals, profile] = await Promise.all([
+          mealService.getMeals(),
+          userService.getProfile(),
+        ]);
+        if (cancelled) return;
+        setMeals(fetchedMeals);
+        setAvatarUri(profile.avatarUri);
+      } catch (e) {
+        if (cancelled) return;
+        const err = e as Error & { status?: number };
+        const hint = err.message ?? 'Could not load meals';
+        const suffix = typeof err.status === 'number' ? ` (HTTP ${err.status})` : '';
+        setLoadError(`${hint}${suffix}`);
+        setMeals([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
-    return () => { cancelled = true; };
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadNonce]);
 
   const total = useMemo(() => meals.reduce((s, m) => s + m.kcal, 0), [meals]);
   const totalMacros = useMemo<Macros>(
@@ -172,6 +194,19 @@ export function DietTrackerScreen() {
       {loading ? (
         <View style={styles.loader}>
           <ActivityIndicator size="large" color={d.primary} />
+        </View>
+      ) : loadError ? (
+        <View style={styles.loadErrorWrap}>
+          <Ionicons name="cloud-offline-outline" size={40} color={d.onSurfaceVariant} />
+          <Text style={styles.loadErrorTitle}>Could not load</Text>
+          <Text style={[styles.loadErrorBody, { color: d.onSurfaceVariant }]}>{loadError}</Text>
+          <Pressable
+            onPress={() => setReloadNonce((n) => n + 1)}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.9 }]}
+          >
+            <Text style={styles.retryBtnLabel}>TRY AGAIN</Text>
+          </Pressable>
         </View>
       ) : (
       <KeyboardAvoidingView
@@ -357,6 +392,37 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  loadErrorWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    gap: spacing.md,
+  },
+  loadErrorTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: d.onSurface,
+    marginTop: spacing.sm,
+  },
+  loadErrorBody: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  retryBtn: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm + 4,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 999,
+    backgroundColor: d.card,
+  },
+  retryBtnLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    color: d.primary,
   },
 
   /* ── List content ──────────────────────────────── */
