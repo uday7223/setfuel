@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -12,6 +12,12 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +32,56 @@ import { dashboard, spacing } from '../../theme';
 const CHALLENGE_URI =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuBPvNKUTcNM3A9ClmJ4urTjrrEi7uI1ofO50tB1-UFDFkxxDsoAmH8rp85tVS1Wn3i2udY-tJSbDr3Q-UL5XFReUUxJ06-WudsmCwlQGyPVja-_i-Xr-WMaVRC_b4wP-DtRck4LMIDcievuzqsP4MXbLiMTB9j67EZXv4if0Kwsiz_LtUjq0jNgi7xDuBWkWuaAi0-7UYO1KgPh78Nyuk-1AOlIkEDjwhKx5_o6ha1IibsjQOil5eIp0wwfhAcmNQ41TZ75J11BKKI';
 
+const TIP_ROTATE_MS = 10_000;
+const TIP_FADE_OUT_MS = 320;
+const TIP_FADE_IN_MS = 420;
+
+type HomeWellnessTip = {
+  title: string;
+  body: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  iconBgToken: 'primary' | 'tertiary' | 'brand';
+};
+
+const HOME_WELLNESS_TIPS: HomeWellnessTip[] = [
+  {
+    title: 'Hydration',
+    body: 'Drinking 500ml of water right after waking up kickstarts your metabolism by 24% for the next 90 minutes.',
+    icon: 'water-outline',
+    iconBgToken: 'tertiary',
+  },
+  {
+    title: 'Protein timing',
+    body: 'A palm-sized portion of protein within an hour post-workout helps repair muscle without needing perfect timing every day.',
+    icon: 'nutrition-outline',
+    iconBgToken: 'tertiary',
+  },
+  {
+    title: 'Sleep & strength',
+    body: 'Even one short night of sleep can blunt heavy-lift performance—prioritize 7+ hours when you are training hard.',
+    icon: 'moon-outline',
+    iconBgToken: 'primary',
+  },
+  {
+    title: 'Warm-up',
+    body: 'Two minutes of easy movement before your first heavy set reduces injury risk more than static stretching alone.',
+    icon: 'flash-outline',
+    iconBgToken: 'brand',
+  },
+  {
+    title: 'Steps between sets',
+    body: 'Light walking between sets keeps blood flowing and can make long sessions feel easier without adding junk volume.',
+    icon: 'walk-outline',
+    iconBgToken: 'tertiary',
+  },
+  {
+    title: 'Fiber first',
+    body: 'Vegetables or fruit before a big meal can steady blood sugar and make afternoon energy dips less likely.',
+    icon: 'leaf-outline',
+    iconBgToken: 'tertiary',
+  },
+];
+
 export function HomeScreen() {
   const { signOut } = useAuth();
   const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
@@ -37,6 +93,46 @@ export function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [tipIndex, setTipIndex] = useState(0);
+  const tipOpacity = useSharedValue(1);
+  const tipTranslateY = useSharedValue(0);
+  const skipTipEnterAnim = useRef(true);
+
+  const tipAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: tipOpacity.value,
+    transform: [{ translateY: tipTranslateY.value }],
+  }));
+
+  const bumpTipIndex = useCallback(() => {
+    setTipIndex((i) => (i + 1) % HOME_WELLNESS_TIPS.length);
+  }, []);
+
+  const playTipExit = useCallback(() => {
+    tipOpacity.value = withTiming(0, { duration: TIP_FADE_OUT_MS }, (finished) => {
+      if (finished) {
+        runOnJS(bumpTipIndex)();
+      }
+    });
+    tipTranslateY.value = withTiming(-10, { duration: TIP_FADE_OUT_MS });
+  }, [bumpTipIndex, tipOpacity, tipTranslateY]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const id = setInterval(playTipExit, TIP_ROTATE_MS);
+      return () => clearInterval(id);
+    }, [playTipExit]),
+  );
+
+  useEffect(() => {
+    if (skipTipEnterAnim.current) {
+      skipTipEnterAnim.current = false;
+      return;
+    }
+    tipTranslateY.value = 14;
+    tipOpacity.value = 0;
+    tipOpacity.value = withTiming(1, { duration: TIP_FADE_IN_MS });
+    tipTranslateY.value = withTiming(0, { duration: TIP_FADE_IN_MS });
+  }, [tipIndex, tipOpacity, tipTranslateY]);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,6 +182,16 @@ export function HomeScreen() {
     month: 'short',
     day: 'numeric',
   });
+
+  const tip = HOME_WELLNESS_TIPS[tipIndex]!;
+  const tipIconBg =
+    tip.iconBgToken === 'primary'
+      ? d.primaryIconBg
+      : tip.iconBgToken === 'tertiary'
+        ? d.tertiaryIconBg
+        : d.tabActivePill;
+  const tipIconColor =
+    tip.iconBgToken === 'primary' ? d.primary : tip.iconBgToken === 'tertiary' ? d.tertiary : d.tabActive;
 
   return (
     <View style={[styles.root, { backgroundColor: d.background }]}>
@@ -204,16 +310,15 @@ export function HomeScreen() {
         </View>
 
         <View style={[styles.tipCard, { backgroundColor: d.surfaceContainerLow }]}>
-          <View style={[styles.tipIconWrap, { backgroundColor: d.card }]}>
-            <Ionicons name="bulb-outline" size={22} color={d.tertiary} />
-          </View>
-          <View style={styles.tipCopy}>
-            <Text style={[styles.tipTitle, { color: d.onSurface }]}>Hydration Tip</Text>
-            <Text style={[styles.tipBody, { color: d.onSurfaceVariant }]}>
-              Drinking 500ml of water right after waking up kickstarts your metabolism by 24% for the next 90
-              minutes.
-            </Text>
-          </View>
+          <Animated.View style={[styles.tipAnimatedRow, tipAnimatedStyle]}>
+            <View style={[styles.tipIconWrap, { backgroundColor: tipIconBg }]}>
+              <Ionicons name={tip.icon} size={22} color={tipIconColor} />
+            </View>
+            <View style={styles.tipCopy}>
+              <Text style={[styles.tipTitle, { color: d.onSurface }]}>{tip.title}</Text>
+              <Text style={[styles.tipBody, { color: d.onSurfaceVariant }]}>{tip.body}</Text>
+            </View>
+          </Animated.View>
         </View>
       </ScrollView>
       )}
@@ -400,12 +505,14 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   tipCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
     borderRadius: 24,
     padding: spacing.lg,
     marginBottom: spacing.md,
+  },
+  tipAnimatedRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
   },
   tipIconWrap: {
     padding: spacing.sm + 4,
