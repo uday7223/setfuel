@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -175,6 +176,10 @@ export function WorkoutTrackerScreen() {
   const apiDebounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const isApiMode = !USE_LOCAL;
+
+  const routineModalMaxHeight = Math.round(
+    Math.min(Dimensions.get('window').height * 0.88, 720),
+  );
 
   useEffect(() => {
     return () => {
@@ -1050,59 +1055,73 @@ export function WorkoutTrackerScreen() {
           }}
         >
           <Pressable
-            style={[styles.routineModalShell, { backgroundColor: d.surfaceContainerLowest }]}
+            style={[
+              styles.routineModalShell,
+              {
+                backgroundColor: d.surfaceContainerLowest,
+                maxHeight: routineModalMaxHeight,
+              },
+            ]}
             onPress={(e) => e.stopPropagation()}
           >
             {routineModal ? (
-              <>
-                <View style={styles.routineModalTopRow}>
-                  <Text style={[styles.routineModalTitle, { color: d.onSurface, flex: 1 }]}>
-                    {routineModal.editMode ? 'Edit program' : routineModal.draft.title}
-                  </Text>
-                  {!routineModal.editMode ? (
-                    <Pressable
-                      onPress={() => setRoutineModal((m) => (m ? { ...m, editMode: true } : null))}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel="Edit program"
-                      style={({ pressed }) => [styles.routineEditIconBtn, pressed && { opacity: 0.7 }]}
-                    >
-                      <Ionicons name="create-outline" size={24} color={d.primary} />
-                    </Pressable>
+              <View style={[styles.routineModalColumn, { height: routineModalMaxHeight }]}>
+                <View style={styles.routineModalHeader}>
+                  <View style={styles.routineModalTopRow}>
+                    <Text style={[styles.routineModalTitle, { color: d.onSurface, flex: 1 }]}>
+                      {routineModal.editMode ? 'Edit program' : routineModal.draft.title}
+                    </Text>
+                    {!routineModal.editMode ? (
+                      <Pressable
+                        onPress={() => setRoutineModal((m) => (m ? { ...m, editMode: true } : null))}
+                        hitSlop={10}
+                        accessibilityRole="button"
+                        accessibilityLabel="Edit program"
+                        style={({ pressed }) => [styles.routineEditIconBtn, pressed && { opacity: 0.7 }]}
+                      >
+                        <Ionicons name="create-outline" size={24} color={d.primary} />
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  {!routineModal.editMode && routineModal.draft.dayLabel ? (
+                    <Text style={[styles.routineModalDay, { color: d.primary }]}>{routineModal.draft.dayLabel}</Text>
                   ) : null}
                 </View>
-                {!routineModal.editMode && routineModal.draft.dayLabel ? (
-                  <Text style={[styles.routineModalDay, { color: d.primary }]}>{routineModal.draft.dayLabel}</Text>
+
+                {routineModal.editMode ? (
+                  <View style={styles.routineModalFixedFields}>
+                    <Text style={[styles.inputLabel, { color: d.onSurfaceVariant }]}>Program name</Text>
+                    <TextInput
+                      value={routineModal.draft.title}
+                      onChangeText={(t) => updateDraft((prev) => ({ ...prev, title: t }))}
+                      placeholder="e.g. Chest"
+                      placeholderTextColor={d.outline}
+                      style={[styles.modalInput, { color: d.onSurface, borderColor: d.outlineVariant }]}
+                    />
+                    <Text style={[styles.inputLabel, { color: d.onSurfaceVariant }]}>Day label (optional)</Text>
+                    <TextInput
+                      value={routineModal.draft.dayLabel ?? ''}
+                      onChangeText={(t) =>
+                        updateDraft((prev) => ({
+                          ...prev,
+                          dayLabel: t.trim() ? t : undefined,
+                        }))
+                      }
+                      placeholder="e.g. Monday"
+                      placeholderTextColor={d.outline}
+                      style={[styles.modalInput, { color: d.onSurface, borderColor: d.outlineVariant }]}
+                    />
+                  </View>
                 ) : null}
 
                 <ScrollView
                   style={styles.routineModalScroll}
+                  contentContainerStyle={styles.routineModalScrollContent}
                   keyboardShouldPersistTaps="handled"
                   showsVerticalScrollIndicator
                 >
                   {routineModal.editMode ? (
                     <>
-                      <Text style={[styles.inputLabel, { color: d.onSurfaceVariant }]}>Program name</Text>
-                      <TextInput
-                        value={routineModal.draft.title}
-                        onChangeText={(t) => updateDraft((prev) => ({ ...prev, title: t }))}
-                        placeholder="e.g. Chest"
-                        placeholderTextColor={d.outline}
-                        style={[styles.modalInput, { color: d.onSurface, borderColor: d.outlineVariant }]}
-                      />
-                      <Text style={[styles.inputLabel, { color: d.onSurfaceVariant }]}>Day label (optional)</Text>
-                      <TextInput
-                        value={routineModal.draft.dayLabel ?? ''}
-                        onChangeText={(t) =>
-                          updateDraft((prev) => ({
-                            ...prev,
-                            dayLabel: t.trim() ? t : undefined,
-                          }))
-                        }
-                        placeholder="e.g. Monday"
-                        placeholderTextColor={d.outline}
-                        style={[styles.modalInput, { color: d.onSurface, borderColor: d.outlineVariant }]}
-                      />
                       {routineModal.draft.blocks.map((block, bi) => (
                         <View key={`edit-block-${bi}`} style={styles.routineBlock}>
                           <View style={styles.routineEditBlockHead}>
@@ -1197,6 +1216,35 @@ export function WorkoutTrackerScreen() {
                           </Pressable>
                         </View>
                       ))}
+                    </>
+                  ) : (
+                    <>
+                      {routineModal.draft.blocks.map((block, bi) => (
+                        <View key={`view-block-${bi}-${block.heading}`} style={styles.routineBlock}>
+                          <Text style={[styles.routineBlockHeading, { color: d.secondary }]}>{block.heading}</Text>
+                          {block.items.map((item, i) => (
+                            <View key={`view-item-${bi}-${i}`} style={styles.routineItemRow}>
+                              <Text style={[styles.routineItemIndex, { color: d.outline }]}>{i + 1}.</Text>
+                              <Text style={[styles.routineItemText, { color: d.onSurface }]}>{item}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      ))}
+                    </>
+                  )}
+                </ScrollView>
+
+                <View
+                  style={[
+                    styles.routineModalFooter,
+                    {
+                      borderTopColor: d.outlineGhost15,
+                      paddingBottom: Math.max(insets.bottom, spacing.md),
+                    },
+                  ]}
+                >
+                  {routineModal.editMode ? (
+                    <>
                       <Pressable
                         onPress={() =>
                           updateDraft((prev) => ({
@@ -1209,7 +1257,7 @@ export function WorkoutTrackerScreen() {
                         <Ionicons name="albums-outline" size={18} color={d.primary} />
                         <Text style={[styles.modalGhostText, { color: d.primary }]}>Add section</Text>
                       </Pressable>
-                      <View style={styles.modalActions}>
+                      <View style={[styles.modalActions, styles.routineModalFooterActions]}>
                         <Pressable
                           onPress={cancelProgramEdit}
                           style={[styles.modalGhostBtn, { borderColor: d.outlineGhost15 }]}
@@ -1236,44 +1284,28 @@ export function WorkoutTrackerScreen() {
                     </>
                   ) : (
                     <>
-                      {routineModal.draft.blocks.map((block, bi) => (
-                        <View key={`view-block-${bi}-${block.heading}`} style={styles.routineBlock}>
-                          <Text style={[styles.routineBlockHeading, { color: d.secondary }]}>{block.heading}</Text>
-                          {block.items.map((item, i) => (
-                            <View key={`view-item-${bi}-${i}`} style={styles.routineItemRow}>
-                              <Text style={[styles.routineItemIndex, { color: d.outline }]}>{i + 1}.</Text>
-                              <Text style={[styles.routineItemText, { color: d.onSurface }]}>{item}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      ))}
+                      {sessionStarted ? (
+                        <Pressable
+                          onPress={() => void addRoutineExercisesToSession()}
+                          style={[styles.routinePrimaryBtn, { backgroundColor: d.primaryContainer }]}
+                        >
+                          <Text style={styles.modalPrimaryText}>Add all to session</Text>
+                        </Pressable>
+                      ) : (
+                        <Text style={[styles.routineModalHint, { color: d.onSurfaceVariant }]}>
+                          Start a workout to load this list into your log.
+                        </Text>
+                      )}
+                      <Pressable
+                        onPress={() => setRoutineModal(null)}
+                        style={[styles.routineCloseBtn, { borderColor: d.outlineGhost15 }]}
+                      >
+                        <Text style={[styles.modalGhostText, { color: d.primary }]}>Close</Text>
+                      </Pressable>
                     </>
                   )}
-                </ScrollView>
-
-                {!routineModal.editMode ? (
-                  <>
-                    {sessionStarted ? (
-                      <Pressable
-                        onPress={() => void addRoutineExercisesToSession()}
-                        style={[styles.routinePrimaryBtn, { backgroundColor: d.primaryContainer }]}
-                      >
-                        <Text style={styles.modalPrimaryText}>Add all to session</Text>
-                      </Pressable>
-                    ) : (
-                      <Text style={[styles.routineModalHint, { color: d.onSurfaceVariant }]}>
-                        Start a workout to load this list into your log.
-                      </Text>
-                    )}
-                    <Pressable
-                      onPress={() => setRoutineModal(null)}
-                      style={[styles.routineCloseBtn, { borderColor: d.outlineGhost15 }]}
-                    >
-                      <Text style={[styles.modalGhostText, { color: d.primary }]}>Close</Text>
-                    </Pressable>
-                  </>
-                ) : null}
-              </>
+                </View>
+              </View>
             ) : null}
           </Pressable>
         </Pressable>
@@ -1682,11 +1714,25 @@ const styles = StyleSheet.create({
   },
   routineModalShell: {
     borderRadius: 24,
-    padding: spacing.lg,
-    maxHeight: '88%',
     width: '100%',
     maxWidth: 400,
     alignSelf: 'center',
+    overflow: 'hidden',
+  },
+  routineModalColumn: {
+    flexDirection: 'column',
+    width: '100%',
+  },
+  routineModalHeader: {
+    flexShrink: 0,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  routineModalFixedFields: {
+    flexShrink: 0,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
   },
   routineModalTitle: {
     fontSize: 20,
@@ -1696,12 +1742,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     marginTop: spacing.xs,
-    marginBottom: spacing.sm,
+    marginBottom: 0,
     textTransform: 'capitalize',
   },
   routineModalScroll: {
-    maxHeight: 340,
-    marginBottom: spacing.md,
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: spacing.lg,
+  },
+  routineModalScrollContent: {
+    paddingBottom: spacing.md,
+    flexGrow: 1,
+  },
+  routineModalFooter: {
+    flexShrink: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    gap: spacing.md,
+  },
+  routineModalFooterActions: {
+    marginTop: 0,
   },
   routineBlock: {
     marginBottom: spacing.md,
@@ -1733,12 +1794,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: spacing.md,
     alignItems: 'center',
-    marginBottom: spacing.sm,
   },
   routineModalHint: {
     fontSize: 14,
     textAlign: 'center',
-    marginBottom: spacing.md,
     lineHeight: 20,
   },
   routineCloseBtn: {
@@ -1822,7 +1881,7 @@ const styles = StyleSheet.create({
   routineModalTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: 0,
   },
   routineEditIconBtn: {
     padding: spacing.sm,
@@ -1878,7 +1937,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
     paddingVertical: spacing.md,
-    marginBottom: spacing.md,
   },
   routineResetLink: {
     paddingVertical: spacing.md,
