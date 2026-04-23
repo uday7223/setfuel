@@ -9,19 +9,37 @@ const d = dashboard;
 type AppHeaderProps = {
   avatarUri?: string;
   topInset: number;
+  /** When set, tapping the avatar + wordmark opens profile (e.g. Home). */
+  onProfilePress?: () => void;
 };
 
-export function AppHeader({ avatarUri, topInset }: AppHeaderProps) {
+export function AppHeader({ avatarUri, topInset, onProfilePress }: AppHeaderProps) {
+  const brand = (
+    <>
+      <View style={styles.avatarWrap}>
+        {avatarUri && (
+          <Image source={{ uri: avatarUri }} style={styles.avatarImg} resizeMode="cover" />
+        )}
+      </View>
+      <Text style={styles.wordmark}>SetFuel</Text>
+    </>
+  );
+
   const inner = (
     <View style={styles.row}>
-      <View style={styles.left}>
-        <View style={styles.avatarWrap}>
-          {avatarUri && (
-            <Image source={{ uri: avatarUri }} style={styles.avatarImg} resizeMode="cover" />
-          )}
-        </View>
-        <Text style={styles.wordmark}>SetFuel</Text>
-      </View>
+      {onProfilePress ? (
+        <Pressable
+          onPress={onProfilePress}
+          accessibilityRole="button"
+          accessibilityLabel="Open profile"
+          hitSlop={4}
+          style={({ pressed }) => [styles.left, pressed && { opacity: 0.88 }]}
+        >
+          {brand}
+        </Pressable>
+      ) : (
+        <View style={styles.left}>{brand}</View>
+      )}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Notifications"

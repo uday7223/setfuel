@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -23,7 +24,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
 import { AppHeader } from '../../components/ui/AppHeader';
-import type { DashboardSummary } from '../../types';
+import type { DashboardSummary, UserProfile } from '../../types';
 import { BASE_URL, USE_LOCAL } from '../../constant';
 import { userService } from '../../services';
 import type { MainTabParamList } from '../../navigation/types';
@@ -89,6 +90,8 @@ export function HomeScreen() {
   const d = dashboard;
 
   const [avatarUri, setAvatarUri] = useState<string | undefined>();
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -150,6 +153,7 @@ export function HomeScreen() {
           userService.getDashboardSummary(),
         ]);
         if (cancelled) return;
+        setProfile(p);
         setAvatarUri(p.avatarUri);
         setSummary(s);
       } catch (e) {
@@ -158,6 +162,7 @@ export function HomeScreen() {
         const hint = err.message ?? 'Could not load dashboard';
         const suffix = typeof err.status === 'number' ? ` (HTTP ${err.status})` : '';
         setLoadError(`${hint}${suffix}`);
+        setProfile(null);
         setSummary(null);
       } finally {
         if (!cancelled) setLoading(false);
@@ -193,9 +198,26 @@ export function HomeScreen() {
   const tipIconColor =
     tip.iconBgToken === 'primary' ? d.primary : tip.iconBgToken === 'tertiary' ? d.tertiary : d.tabActive;
 
+  const openProfile = useCallback(() => {
+    setProfileModalVisible(true);
+  }, []);
+
+  const closeProfile = useCallback(() => {
+    setProfileModalVisible(false);
+  }, []);
+
+  const handleSignOut = useCallback(() => {
+    setProfileModalVisible(false);
+    signOut();
+  }, [signOut]);
+
   return (
     <View style={[styles.root, { backgroundColor: d.background }]}>
-      <AppHeader avatarUri={avatarUri} topInset={insets.top} />
+      <AppHeader
+        avatarUri={avatarUri}
+        topInset={insets.top}
+        onProfilePress={profile ? openProfile : undefined}
+      />
 
       {loading ? (
         <View style={styles.loader}>
@@ -222,14 +244,6 @@ export function HomeScreen() {
       >
         <View style={styles.metaRow}>
           <Text style={[styles.metaDate, { color: d.secondary }]}>{today.toUpperCase()}</Text>
-          <Pressable
-            onPress={signOut}
-            accessibilityRole="button"
-            hitSlop={12}
-            style={({ pressed }) => [styles.signOutBtn, pressed && { opacity: 0.8 }]}
-          >
-            <Text style={[styles.signOutLabel, { color: d.error }]}>SIGN OUT</Text>
-          </Pressable>
         </View>
 
         <Text style={[styles.heroTitle, { color: d.onSurface }]}>
@@ -322,6 +336,74 @@ export function HomeScreen() {
         </View>
       </ScrollView>
       )}
+
+      <Modal
+        visible={profileModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeProfile}
+      >
+        <View style={styles.profileModalRoot}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close profile"
+            style={[StyleSheet.absoluteFillObject, styles.profileModalBackdrop]}
+            onPress={closeProfile}
+          />
+          <View
+            style={[
+              styles.profileSheet,
+              {
+                backgroundColor: d.surfaceContainerLow,
+                borderColor: d.outlineGhost15,
+                marginBottom: insets.bottom + spacing.md,
+              },
+            ]}
+          >
+            <View style={styles.profileSheetHeader}>
+              <Text style={[styles.profileSheetTitle, { color: d.onSurface }]}>Profile</Text>
+              <Pressable
+                onPress={closeProfile}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                hitSlop={12}
+                style={({ pressed }) => [styles.profileCloseBtn, pressed && { opacity: 0.75 }]}
+              >
+                <Ionicons name="close" size={26} color={d.onSurfaceVariant} />
+              </Pressable>
+            </View>
+
+            {profile?.avatarUri ? (
+              <Image source={{ uri: profile.avatarUri }} style={styles.profileAvatarLg} resizeMode="cover" />
+            ) : (
+              <View style={[styles.profileAvatarLg, styles.profileAvatarPlaceholder, { backgroundColor: d.card }]}>
+                <Ionicons name="person" size={40} color={d.onSurfaceVariant} />
+              </View>
+            )}
+
+            <Text style={[styles.profileName, { color: d.onSurface }]}>{profile?.displayName ?? '—'}</Text>
+            <Text style={[styles.profileEmail, { color: d.secondary }]}>{profile?.email ?? '—'}</Text>
+
+            <View style={[styles.profileIdRow, { borderTopColor: d.outlineGhost15 }]}>
+              <Text style={[styles.profileIdLabel, { color: d.onSurfaceVariant }]}>User ID</Text>
+              <Text style={[styles.profileIdValue, { color: d.onSurface }]} selectable>
+                {profile?.id ?? '—'}
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={handleSignOut}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.profileSignOutBtn,
+                { borderColor: d.error, opacity: pressed ? 0.88 : 1 },
+              ]}
+            >
+              <Text style={[styles.profileSignOutLabel, { color: d.error }]}>SIGN OUT</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -372,9 +454,6 @@ const styles = StyleSheet.create({
     gap: spacing.lg + spacing.sm,
   },
   metaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
     marginBottom: spacing.sm,
   },
   metaDate: {
@@ -382,13 +461,85 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1.6,
   },
-  signOutBtn: {
-    paddingHorizontal: spacing.sm + 4,
-    paddingVertical: spacing.xs + 2,
-    borderRadius: 999,
+  profileModalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
   },
-  signOutLabel: {
+  profileModalBackdrop: {
+    backgroundColor: 'rgba(6, 10, 18, 0.72)',
+  },
+  profileSheet: {
+    marginHorizontal: spacing.lg,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: spacing.lg,
+    zIndex: 1,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+  },
+  profileSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  profileSheetTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  profileCloseBtn: {
+    padding: spacing.xs,
+  },
+  profileAvatarLg: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+  },
+  profileAvatarPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileName: {
+    fontSize: 22,
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: -0.4,
+    marginBottom: spacing.xs,
+  },
+  profileEmail: {
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  profileIdRow: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: spacing.md,
+    marginBottom: spacing.lg,
+    gap: spacing.xs,
+  },
+  profileIdLabel: {
     fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+  },
+  profileIdValue: {
+    fontSize: 13,
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+  },
+  profileSignOutBtn: {
+    paddingVertical: spacing.md + 2,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  profileSignOutLabel: {
+    fontSize: 13,
     fontWeight: '700',
     letterSpacing: 1.2,
   },
