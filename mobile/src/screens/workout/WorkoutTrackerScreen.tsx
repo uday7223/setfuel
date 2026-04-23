@@ -18,10 +18,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { ExerciseEntry, PersonalRoutine, SetEntry } from '../../types';
-import { USE_LOCAL } from '../../constant';
+import type { ExerciseEntry, PersonalRoutine, SetEntry, UserProfile } from '../../types';
+import { BASE_URL, USE_LOCAL } from '../../constant';
+import { useAuth } from '../../context/AuthContext';
+import { ProfileModal } from '../../components/profile/ProfileModal';
 import { localId } from '../../services/api';
-import { PLACEHOLDER_AVATAR } from '../../services/userService';
+import { getProfile, PLACEHOLDER_AVATAR } from '../../services/userService';
 import { workoutService } from '../../services';
 import { AppHeader } from '../../components/ui/AppHeader';
 import { flattenRoutineItems } from '../../data/personalRoutines';
@@ -154,7 +156,12 @@ function PulseDot({ color }: { color: string }) {
 export function WorkoutTrackerScreen() {
   const d = dashboard;
   const insets = useSafeAreaInsets();
+  const { signOut } = useAuth();
   const programsCarouselRef = useRef<ScrollView>(null);
+
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [headerAvatarUri, setHeaderAvatarUri] = useState<string | undefined>();
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
 
   const [sessionStarted, setSessionStarted] = useState(false);
   const [exercises, setExercises] = useState<ExerciseEntry[]>([]);
@@ -172,6 +179,29 @@ export function WorkoutTrackerScreen() {
   useEffect(() => {
     return () => {
       Object.values(apiDebounceTimers.current).forEach(clearTimeout);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!USE_LOCAL && !BASE_URL.trim()) {
+          return;
+        }
+        const p = await getProfile();
+        if (cancelled) return;
+        setProfile(p);
+        setHeaderAvatarUri(p.avatarUri);
+      } catch {
+        if (!cancelled) {
+          setProfile(null);
+          setHeaderAvatarUri(undefined);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -675,7 +705,11 @@ export function WorkoutTrackerScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: d.background }]}>
-      <AppHeader avatarUri={PLACEHOLDER_AVATAR} topInset={insets.top} />
+      <AppHeader
+        avatarUri={headerAvatarUri ?? PLACEHOLDER_AVATAR}
+        topInset={insets.top}
+        onProfilePress={profile ? () => setProfileModalVisible(true) : undefined}
+      />
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -1244,6 +1278,17 @@ export function WorkoutTrackerScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <ProfileModal
+        visible={profileModalVisible}
+        onClose={() => setProfileModalVisible(false)}
+        onSignOut={() => {
+          setProfileModalVisible(false);
+          signOut();
+        }}
+        profile={profile}
+        bottomInset={insets.bottom}
+      />
     </View>
   );
 }

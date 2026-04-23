@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -23,6 +22,7 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
+import { ProfileModal } from '../../components/profile/ProfileModal';
 import { AppHeader } from '../../components/ui/AppHeader';
 import type { DashboardSummary, UserProfile } from '../../types';
 import { BASE_URL, USE_LOCAL } from '../../constant';
@@ -337,73 +337,13 @@ export function HomeScreen() {
       </ScrollView>
       )}
 
-      <Modal
+      <ProfileModal
         visible={profileModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeProfile}
-      >
-        <View style={styles.profileModalRoot}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close profile"
-            style={[StyleSheet.absoluteFillObject, styles.profileModalBackdrop]}
-            onPress={closeProfile}
-          />
-          <View
-            style={[
-              styles.profileSheet,
-              {
-                backgroundColor: d.surfaceContainerLow,
-                borderColor: d.outlineGhost15,
-                marginBottom: insets.bottom + spacing.md,
-              },
-            ]}
-          >
-            <View style={styles.profileSheetHeader}>
-              <Text style={[styles.profileSheetTitle, { color: d.onSurface }]}>Profile</Text>
-              <Pressable
-                onPress={closeProfile}
-                accessibilityRole="button"
-                accessibilityLabel="Close"
-                hitSlop={12}
-                style={({ pressed }) => [styles.profileCloseBtn, pressed && { opacity: 0.75 }]}
-              >
-                <Ionicons name="close" size={26} color={d.onSurfaceVariant} />
-              </Pressable>
-            </View>
-
-            {profile?.avatarUri ? (
-              <Image source={{ uri: profile.avatarUri }} style={styles.profileAvatarLg} resizeMode="cover" />
-            ) : (
-              <View style={[styles.profileAvatarLg, styles.profileAvatarPlaceholder, { backgroundColor: d.card }]}>
-                <Ionicons name="person" size={40} color={d.onSurfaceVariant} />
-              </View>
-            )}
-
-            <Text style={[styles.profileName, { color: d.onSurface }]}>{profile?.displayName ?? '—'}</Text>
-            <Text style={[styles.profileEmail, { color: d.secondary }]}>{profile?.email ?? '—'}</Text>
-
-            <View style={[styles.profileIdRow, { borderTopColor: d.outlineGhost15 }]}>
-              <Text style={[styles.profileIdLabel, { color: d.onSurfaceVariant }]}>User ID</Text>
-              <Text style={[styles.profileIdValue, { color: d.onSurface }]} selectable>
-                {profile?.id ?? '—'}
-              </Text>
-            </View>
-
-            <Pressable
-              onPress={handleSignOut}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.profileSignOutBtn,
-                { borderColor: d.error, opacity: pressed ? 0.88 : 1 },
-              ]}
-            >
-              <Text style={[styles.profileSignOutLabel, { color: d.error }]}>SIGN OUT</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+        onClose={closeProfile}
+        onSignOut={handleSignOut}
+        profile={profile}
+        bottomInset={insets.bottom}
+      />
     </View>
   );
 }
@@ -460,88 +400,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 1.6,
-  },
-  profileModalRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  profileModalBackdrop: {
-    backgroundColor: 'rgba(6, 10, 18, 0.72)',
-  },
-  profileSheet: {
-    marginHorizontal: spacing.lg,
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: spacing.lg,
-    zIndex: 1,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.35,
-    shadowRadius: 24,
-  },
-  profileSheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  profileSheetTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-  },
-  profileCloseBtn: {
-    padding: spacing.xs,
-  },
-  profileAvatarLg: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    alignSelf: 'center',
-    marginBottom: spacing.md,
-  },
-  profileAvatarPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileName: {
-    fontSize: 22,
-    fontWeight: '700',
-    textAlign: 'center',
-    letterSpacing: -0.4,
-    marginBottom: spacing.xs,
-  },
-  profileEmail: {
-    fontSize: 15,
-    textAlign: 'center',
-    marginBottom: spacing.lg,
-  },
-  profileIdRow: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: spacing.md,
-    marginBottom: spacing.lg,
-    gap: spacing.xs,
-  },
-  profileIdLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-  },
-  profileIdValue: {
-    fontSize: 13,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
-  },
-  profileSignOutBtn: {
-    paddingVertical: spacing.md + 2,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  profileSignOutLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 1.2,
   },
   heroTitle: {
     fontSize: 44,

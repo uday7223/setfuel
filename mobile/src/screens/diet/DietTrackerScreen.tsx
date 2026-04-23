@@ -17,9 +17,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { Macros, Meal } from '../../types';
+import type { Macros, Meal, UserProfile } from '../../types';
 import { BASE_URL, USE_LOCAL } from '../../constant';
+import { useAuth } from '../../context/AuthContext';
 import { mealService, userService } from '../../services';
+import { ProfileModal } from '../../components/profile/ProfileModal';
 import { AppHeader } from '../../components/ui/AppHeader';
 import { dashboard, spacing } from '../../theme';
 
@@ -30,12 +32,15 @@ const GLASS_BORDER = d.glassCardBorder;
 
 export function DietTrackerScreen() {
   const insets = useSafeAreaInsets();
+  const { signOut } = useAuth();
 
   const [meals, setMeals] = useState<Meal[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [avatarUri, setAvatarUri] = useState<string | undefined>();
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [quickMode, setQuickMode] = useState(false);
   const [mealName, setMealName] = useState('');
@@ -52,19 +57,21 @@ export function DietTrackerScreen() {
             'API mode is on but EXPO_PUBLIC_API_BASE_URL is empty. Set it in mobile/.env (include /v1). On Android emulator use 10.0.2.2 instead of localhost.',
           );
         }
-        const [fetchedMeals, profile] = await Promise.all([
+        const [fetchedMeals, userProfile] = await Promise.all([
           mealService.getMeals(),
           userService.getProfile(),
         ]);
         if (cancelled) return;
         setMeals(fetchedMeals);
-        setAvatarUri(profile.avatarUri);
+        setProfile(userProfile);
+        setAvatarUri(userProfile.avatarUri);
       } catch (e) {
         if (cancelled) return;
         const err = e as Error & { status?: number };
         const hint = err.message ?? 'Could not load meals';
         const suffix = typeof err.status === 'number' ? ` (HTTP ${err.status})` : '';
         setLoadError(`${hint}${suffix}`);
+        setProfile(null);
         setMeals([]);
       } finally {
         if (!cancelled) setLoading(false);
@@ -115,6 +122,13 @@ export function DietTrackerScreen() {
   }, []);
 
   const closeModal = useCallback(() => setModalOpen(false), []);
+
+  const openProfile = useCallback(() => setProfileModalVisible(true), []);
+  const closeProfile = useCallback(() => setProfileModalVisible(false), []);
+  const handleSignOut = useCallback(() => {
+    setProfileModalVisible(false);
+    signOut();
+  }, [signOut]);
 
   const saveMeal = useCallback(async () => {
     const name = mealName.trim() || 'Meal';
@@ -189,7 +203,11 @@ export function DietTrackerScreen() {
 
   return (
     <View style={styles.root}>
-      <AppHeader avatarUri={avatarUri} topInset={insets.top} />
+      <AppHeader
+        avatarUri={avatarUri}
+        topInset={insets.top}
+        onProfilePress={profile ? openProfile : undefined}
+      />
 
       {loading ? (
         <View style={styles.loader}>
@@ -376,6 +394,14 @@ export function DietTrackerScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <ProfileModal
+        visible={profileModalVisible}
+        onClose={closeProfile}
+        onSignOut={handleSignOut}
+        profile={profile}
+        bottomInset={insets.bottom}
+      />
     </View>
   );
 }
