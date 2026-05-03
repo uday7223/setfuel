@@ -6,6 +6,10 @@
 !.env.example
 !**/.env.example
 
+# IDE metadata
+.idea/
+*.iml
+
 mobile/node_modules/
 mobile/.expo/
 mobile/dist/

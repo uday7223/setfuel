@@ -1,5 +1,6 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Linking,
   Platform,
@@ -45,13 +46,27 @@ function GoogleIcon({ size = 20 }: { size?: number }) {
 }
 
 /**
- * Dark landing / auth screen — Stitch “Mindful Kinetic” (tonal layering, editorial type).
- * Google CTA is still a placeholder until OAuth + backend.
+ * Dark landing / auth screen — Stitch "Mindful Kinetic" (tonal layering, editorial type).
  */
 export function LoginScreen() {
-  const { signInWithGooglePlaceholder } = useAuth();
+  const { signInWithGoogle } = useAuth();
+  const [signingIn, setSigningIn] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const a = authLanding;
   const d = dashboard;
+
+  const handleGoogleSignIn = useCallback(async () => {
+    setAuthError(null);
+    setSigningIn(true);
+    try {
+      await signInWithGoogle();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Sign-in failed. Please try again.';
+      setAuthError(msg);
+    } finally {
+      setSigningIn(false);
+    }
+  }, [signInWithGoogle]);
 
   useFocusEffect(
     useCallback(() => {
@@ -105,34 +120,47 @@ export function LoginScreen() {
         >
           <View style={styles.cardIntro}>
             <View style={[styles.badge, { backgroundColor: badgeBg }]}>
-              <Text style={[styles.badgeText, { color: badgeLabel }]}>SYSTEM UPDATE</Text>
+              <Text style={[styles.badgeText, { color: badgeLabel }]}>WELCOME</Text>
             </View>
 
-            <Text style={[styles.headline, { color: d.onSurface }]}>Authentication Coming Soon</Text>
+            <Text style={[styles.headline, { color: d.onSurface }]}>Sign in to SetFuel</Text>
 
             <Text style={[styles.body, { color: d.onSurfaceVariant }]}>
-              We&apos;re putting the finishing touches on our secure platform. Early access will be available
-              shortly for all fitness enthusiasts.
+              Track your workouts and nutrition with a personalised experience built around your goals.
             </Text>
           </View>
+
+          {authError ? (
+            <View style={[styles.errorBanner, { backgroundColor: 'rgba(234, 67, 53, 0.1)', borderColor: 'rgba(234, 67, 53, 0.3)' }]}>
+              <Text style={[styles.errorText, { color: '#EA4335' }]}>{authError}</Text>
+            </View>
+          ) : null}
 
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Continue with Google"
-            onPress={signInWithGooglePlaceholder}
+            onPress={() => void handleGoogleSignIn()}
+            disabled={signingIn}
             android_ripple={{ color: 'rgba(125, 211, 252, 0.12)' }}
             style={({ pressed }) => [
               styles.googleBtn,
               {
                 backgroundColor: d.surfaceContainerLowest,
                 borderColor: googleBorder,
+                opacity: signingIn ? 0.6 : 1,
               },
               Platform.OS === 'ios' && pressed && { backgroundColor: d.surfaceContainerLow },
             ]}
           >
             <View style={styles.googleBtnContent} pointerEvents="none">
-              <GoogleIcon size={20} />
-              <Text style={[styles.googleLabel, { color: d.onSurfaceVariant }]}>Continue with Google</Text>
+              {signingIn ? (
+                <ActivityIndicator size="small" color={d.onSurfaceVariant} />
+              ) : (
+                <GoogleIcon size={20} />
+              )}
+              <Text style={[styles.googleLabel, { color: d.onSurfaceVariant }]}>
+                {signingIn ? 'Signing in…' : 'Continue with Google'}
+              </Text>
             </View>
           </Pressable>
 
@@ -252,6 +280,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 26,
     paddingHorizontal: spacing.xs,
+  },
+  errorBanner: {
+    alignSelf: 'stretch',
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  errorText: {
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 18,
   },
   googleBtn: {
     alignSelf: 'stretch',

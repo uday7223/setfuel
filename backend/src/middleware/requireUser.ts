@@ -1,29 +1,36 @@
 import type { NextFunction, Request, Response } from 'express';
-import { getPool } from '../db/pool.js';
+import jwt from 'jsonwebtoken';
+import { config } from '../config.js';
+
+interface JwtPayload {
+  sub: string;
+}
 
 /**
- * Uses the first row in `app_user` (seed `dev@local.test` after migrations).
- * Replace with JWT → user id when you add auth.
+ * Verifies the Bearer JWT in the Authorization header and populates
+ * `res.locals.userId`. Returns 401 for missing/invalid/expired tokens.
  */
-export async function requireUser(_req: Request, res: Response, next: NextFunction) {
-  const pool = getPool();
-  if (!pool) {
-    res.status(503).json({ message: 'Database unavailable' });
+export function requireUser(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader?.startsWith('Bearer ')) {
+    res.status(401).json({ message: 'Authorization header missing or malformed' });
     return;
   }
+
+  const token = authHeader.slice(7);
+
+  if (!config.jwtSecret) {
+    res.status(500).json({ message: 'Server misconfigured: JWT_SECRET not set' });
+    return;
+  }
+
   try {
-    const r = await pool.query<{ id: string }>(
-      'SELECT id::text AS id FROM app_user ORDER BY id ASC LIMIT 1',
-    );
-    const row = r.rows[0];
-    if (!row) {
-      res.status(503).json({ message: 'No app_user row — run npm run db:migrate' });
-      return;
-    }
-    res.locals.userId = Number(row.id);
+    const payload = jwt.verify(token, config.jwtSecret) as JwtPayload;
+    res.locals.userId = Number(payload.sub);
     next();
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'query failed';
-    res.status(500).json({ message: msg });
+    const isExpired = e instanceof jwt.TokenExpiredError;
+    res.status(401).json({ message: isExpired ? 'Token expired' : 'Invalid token' });
   }
 }

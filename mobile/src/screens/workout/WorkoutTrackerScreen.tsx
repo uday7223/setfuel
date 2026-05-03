@@ -1316,7 +1316,7 @@ export function WorkoutTrackerScreen() {
         onClose={() => setProfileModalVisible(false)}
         onSignOut={() => {
           setProfileModalVisible(false);
-          signOut();
+          void signOut();
         }}
         profile={profile}
         bottomInset={insets.bottom}

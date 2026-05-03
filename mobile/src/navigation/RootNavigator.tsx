@@ -1,4 +1,5 @@
 import React from 'react';
+import { View } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import { LoginScreen } from '../screens/auth/LoginScreen';
@@ -9,10 +10,15 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 /**
  * Auth gate: one stack, screens swap when `isSignedIn` changes.
- * Later, Google tokens + refresh flow live in AuthContext; navigation stays the same.
+ * A blank view is shown while the stored session token is being validated
+ * (prevents a flash of LoginScreen on every cold start for signed-in users).
  */
 export function RootNavigator() {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <View style={{ flex: 1 }} />;
+  }
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>

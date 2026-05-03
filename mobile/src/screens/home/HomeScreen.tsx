@@ -208,7 +208,7 @@ export function HomeScreen() {
 
   const handleSignOut = useCallback(() => {
     setProfileModalVisible(false);
-    signOut();
+    void signOut();
   }, [signOut]);
 
   return (

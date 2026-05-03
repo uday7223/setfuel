@@ -14,8 +14,17 @@ function readEnvBool(raw: string | undefined, fallback: boolean): boolean {
 /** API root including `/v1`, no trailing slash. Simulator: `http://localhost:3001/v1`. Device: `http://<lan-ip>:3001/v1`. */
 export const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL?.trim() ?? '';
 
+/** Backend root without the `/v1` prefix — used for public routes like `/auth/google`. */
+export const AUTH_BASE_URL = BASE_URL.replace(/\/v1$/, '');
+
 /**
  * When `true`, services use local mocks / on-device storage.
  * Set `EXPO_PUBLIC_USE_LOCAL=false` in `.env` to use the backend (`BASE_URL` must be set).
  */
 export const USE_LOCAL = readEnvBool(process.env.EXPO_PUBLIC_USE_LOCAL, true);
+
+/**
+ * Google OAuth Web Client ID from https://console.cloud.google.com
+ * Must match the GOOGLE_CLIENT_ID set in the backend .env.
+ */
+export const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ?? '';

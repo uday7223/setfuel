@@ -127,7 +127,7 @@ export function DietTrackerScreen() {
   const closeProfile = useCallback(() => setProfileModalVisible(false), []);
   const handleSignOut = useCallback(() => {
     setProfileModalVisible(false);
-    signOut();
+    void signOut();
   }, [signOut]);
 
   const saveMeal = useCallback(async () => {
