@@ -37,6 +37,50 @@ Copy this section for each new version:
 
 ---
 
+## [1.2.0] - 2026-05-04
+
+### Build metadata
+- App display name: SetFuel
+- Version (`expo.version`): 1.2.0
+- Android versionCode: 3
+- EAS profile: preview APK
+
+### Added
+- **Google Sign-In (real OAuth 2.0)** — native Google account picker replaces the placeholder button. Users sign in with their real Google account on the first launch and are remembered on return visits.
+- **JWT authentication** — backend issues a signed 7-day application JWT on every successful sign-in. All protected `/v1` routes now verify a real Bearer token instead of the dev stub.
+- **`POST /auth/google` endpoint** — verifies the Google ID token server-side via `google-auth-library`, upserts the user in `app_user` (email, display name, avatar, Google ID), and returns the app JWT.
+- **Session persistence** — JWT is stored securely in `expo-secure-store`. On every cold start the token is validated against the backend and the session is silently restored; only an expired or revoked token returns the user to the login screen.
+- **User profile in auth context** — `useAuth()` now exposes `user: { id, email, displayName, avatarUri }` in addition to `isSignedIn`.
+- **Profile modal on all main tabs** — tapping the avatar in the header on Home, Diet, and Workout opens the same profile bottom sheet everywhere, with a sign-out action.
+- **Backend structured logging with `pino`** — pretty-printed and colour-coded in development (DEBUG level), structured JSON in production (INFO level). Every log line is tagged with `{ module }` for easy filtering.
+  - HTTP layer: method, URL, status code, response time, user-agent, and IP logged on every request; health-check polls suppressed.
+  - Auth layer: step-by-step trace from Google token verification through user upsert to JWT issuance.
+  - All v1 route handlers wrapped in try/catch with structured error objects — no more silent crashes on DB failures.
+  - DB pool: creation, connect, remove, and idle-client error events logged.
+  - Startup summary shows configured/missing state of `DATABASE_URL`, `JWT_SECRET`, and `GOOGLE_CLIENT_ID`.
+  - Global error handler catches any unhandled route errors and logs them before returning a clean 500 response.
+
+### Changed
+- `requireUser` middleware replaced with real JWT Bearer verification — returns `401 Unauthorized` for missing, invalid, or expired tokens (was always resolving to the first `app_user` row).
+- `AuthContext` fully rewritten: real `GoogleSignin.signIn()` flow, SecureStore persistence, session restore on mount, async `signOut` that clears storage and revokes the Google session.
+- `RootNavigator` renders a blank view during the session-restore check to prevent a flash of the Login screen on cold start for already-signed-in users.
+- Login screen updated: loading spinner replaces the button icon during sign-in, inline error banner shown on failure, headline updated from "Authentication Coming Soon" to live copy.
+- `signOut` is now async across all call sites (Home, Diet, Workout screens).
+- Program routine sheet restructured: only the blocks list scrolls; name/day fields, Add section, and Cancel/Save buttons are pinned in a fixed footer with safe-area padding.
+
+### Fixed
+- Network error on sign-in now surfaces the exact backend URL attempted (`Cannot reach backend at <url>`) instead of the generic "Network request failed" message.
+- Added guard for unconfigured `AUTH_BASE_URL` — shows a clear message if `EXPO_PUBLIC_API_BASE_URL` is missing from `.env`.
+- Fixed `react-native-worklets` peer dependency required by Reanimated 4.x; missing package caused `TurboModule installTurboModule` arity errors on Android startup.
+- Added `.idea/` to `.gitignore` to prevent Android Studio IDE metadata from being accidentally committed.
+
+### Notes
+- **Requires a full rebuild** (`npx expo run:android` or EAS build) — this release adds native modules (`@react-native-google-signin/google-signin`, `expo-secure-store`) that cannot be loaded over-the-air.
+- Run `npm run db:migrate` in `backend/` before deploying — migration `003_google_auth.sql` adds the `google_id` column to `app_user`.
+- Set `JWT_SECRET` (generate with `openssl rand -hex 64`) and `GOOGLE_CLIENT_ID` (Web application client from Google Cloud Console) in `backend/.env` before starting the server.
+
+---
+
 ## [1.1.0] - 2026-04-21
 
 ### Build metadata
