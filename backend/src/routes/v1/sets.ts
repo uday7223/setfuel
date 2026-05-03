@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import { getPool } from '../../db/pool.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ module: 'sets' });
 
 type SetEntry = { id: string; reps: string; weightKg: string; done: boolean };
 type ExerciseEntry = { id: string; name: string; sets: SetEntry[] };
@@ -48,62 +51,95 @@ function findSet(
 export const setsRouter = Router();
 
 setsRouter.delete('/:setId', async (req, res) => {
-  const pool = getPool()!;
   const { userId } = res.locals;
-  const loaded = await loadActiveSessionExercises(pool, userId);
-  if (!loaded) {
-    res.status(404).json({ message: 'No active session' });
-    return;
+  const { setId } = req.params;
+  log.debug({ userId, setId }, 'Deleting set');
+  try {
+    const pool = getPool()!;
+    const loaded = await loadActiveSessionExercises(pool, userId);
+    if (!loaded) {
+      log.warn({ userId }, 'No active session for set delete');
+      res.status(404).json({ message: 'No active session' });
+      return;
+    }
+    let found = false;
+    for (const ex of loaded.exercises) {
+      const before = ex.sets.length;
+      ex.sets = ex.sets.filter((s) => s.id !== setId);
+      if (ex.sets.length < before) found = true;
+    }
+    if (!found) {
+      log.warn({ userId, setId, sessionId: loaded.sessionId }, 'Set not found for deletion');
+      res.status(404).json({ message: 'Set not found' });
+      return;
+    }
+    await saveExercises(pool, loaded.sessionId, loaded.exercises);
+    log.info({ userId, setId, sessionId: loaded.sessionId }, 'Set deleted');
+    res.status(204).send();
+  } catch (err) {
+    log.error({ err, userId, setId }, 'Failed to delete set');
+    res.status(500).json({ message: 'Failed to delete set' });
   }
-  let found = false;
-  for (const ex of loaded.exercises) {
-    const before = ex.sets.length;
-    ex.sets = ex.sets.filter((s) => s.id !== req.params.setId);
-    if (ex.sets.length < before) found = true;
-  }
-  if (!found) {
-    res.status(404).json({ message: 'Set not found' });
-    return;
-  }
-  await saveExercises(pool, loaded.sessionId, loaded.exercises);
-  res.status(204).send();
 });
 
 setsRouter.patch('/:setId', async (req, res) => {
-  const pool = getPool()!;
   const { userId } = res.locals;
-  const loaded = await loadActiveSessionExercises(pool, userId);
-  if (!loaded) {
-    res.status(404).json({ message: 'No active session' });
-    return;
+  const { setId } = req.params;
+  log.debug({ userId, setId, body: req.body }, 'Updating set');
+  try {
+    const pool = getPool()!;
+    const loaded = await loadActiveSessionExercises(pool, userId);
+    if (!loaded) {
+      log.warn({ userId }, 'No active session for set update');
+      res.status(404).json({ message: 'No active session' });
+      return;
+    }
+    const hit = findSet(loaded.exercises, setId);
+    if (!hit) {
+      log.warn({ userId, setId, sessionId: loaded.sessionId }, 'Set not found for update');
+      res.status(404).json({ message: 'Set not found' });
+      return;
+    }
+    const { set } = hit;
+    if (typeof req.body?.reps === 'string') set.reps = req.body.reps;
+    if (typeof req.body?.weightKg === 'string') set.weightKg = req.body.weightKg;
+    if (typeof req.body?.done === 'boolean') set.done = req.body.done;
+    await saveExercises(pool, loaded.sessionId, loaded.exercises);
+    log.debug({ userId, setId, sessionId: loaded.sessionId }, 'Set updated');
+    res.status(204).send();
+  } catch (err) {
+    log.error({ err, userId, setId }, 'Failed to update set');
+    res.status(500).json({ message: 'Failed to update set' });
   }
-  const hit = findSet(loaded.exercises, req.params.setId);
-  if (!hit) {
-    res.status(404).json({ message: 'Set not found' });
-    return;
-  }
-  const { set } = hit;
-  if (typeof req.body?.reps === 'string') set.reps = req.body.reps;
-  if (typeof req.body?.weightKg === 'string') set.weightKg = req.body.weightKg;
-  if (typeof req.body?.done === 'boolean') set.done = req.body.done;
-  await saveExercises(pool, loaded.sessionId, loaded.exercises);
-  res.status(204).send();
 });
 
 setsRouter.post('/:setId/toggle', async (req, res) => {
-  const pool = getPool()!;
   const { userId } = res.locals;
-  const loaded = await loadActiveSessionExercises(pool, userId);
-  if (!loaded) {
-    res.status(404).json({ message: 'No active session' });
-    return;
+  const { setId } = req.params;
+  log.debug({ userId, setId }, 'Toggling set done state');
+  try {
+    const pool = getPool()!;
+    const loaded = await loadActiveSessionExercises(pool, userId);
+    if (!loaded) {
+      log.warn({ userId }, 'No active session for set toggle');
+      res.status(404).json({ message: 'No active session' });
+      return;
+    }
+    const hit = findSet(loaded.exercises, setId);
+    if (!hit) {
+      log.warn({ userId, setId, sessionId: loaded.sessionId }, 'Set not found for toggle');
+      res.status(404).json({ message: 'Set not found' });
+      return;
+    }
+    hit.set.done = !hit.set.done;
+    await saveExercises(pool, loaded.sessionId, loaded.exercises);
+    log.info(
+      { userId, setId, done: hit.set.done, sessionId: loaded.sessionId },
+      `Set toggled → done=${hit.set.done}`,
+    );
+    res.json({ done: hit.set.done });
+  } catch (err) {
+    log.error({ err, userId, setId }, 'Failed to toggle set');
+    res.status(500).json({ message: 'Failed to toggle set' });
   }
-  const hit = findSet(loaded.exercises, req.params.setId);
-  if (!hit) {
-    res.status(404).json({ message: 'Set not found' });
-    return;
-  }
-  hit.set.done = !hit.set.done;
-  await saveExercises(pool, loaded.sessionId, loaded.exercises);
-  res.json({ done: hit.set.done });
 });

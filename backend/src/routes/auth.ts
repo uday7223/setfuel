@@ -3,9 +3,11 @@ import { OAuth2Client } from 'google-auth-library';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { getPool } from '../db/pool.js';
+import { logger } from '../lib/logger.js';
 
 export const authRouter = Router();
 
+const log = logger.child({ module: 'auth' });
 const googleClient = new OAuth2Client(config.googleClientId);
 
 interface AppUserRow {
@@ -23,25 +25,31 @@ interface AppUserRow {
  * and returns a signed application JWT.
  */
 authRouter.post('/google', async (req, res) => {
+  log.debug('Received Google sign-in request');
+
   const { idToken } = req.body as { idToken?: string };
 
   if (!idToken || typeof idToken !== 'string') {
+    log.warn('Missing or invalid idToken in request body');
     res.status(400).json({ message: 'idToken is required' });
     return;
   }
 
   if (!config.googleClientId) {
+    log.error('GOOGLE_CLIENT_ID is not configured');
     res.status(500).json({ message: 'Server misconfigured: GOOGLE_CLIENT_ID not set' });
     return;
   }
 
   if (!config.jwtSecret) {
+    log.error('JWT_SECRET is not configured');
     res.status(500).json({ message: 'Server misconfigured: JWT_SECRET not set' });
     return;
   }
 
   const pool = getPool();
   if (!pool) {
+    log.error('Database pool unavailable during sign-in');
     res.status(503).json({ message: 'Database unavailable' });
     return;
   }
@@ -55,12 +63,14 @@ authRouter.post('/google', async (req, res) => {
   };
 
   try {
+    log.debug('Verifying Google ID token with Google servers…');
     const ticket = await googleClient.verifyIdToken({
       idToken,
       audience: config.googleClientId,
     });
     const payload = ticket.getPayload();
     if (!payload?.sub || !payload.email) {
+      log.warn({ payload }, 'Google token payload missing sub or email');
       res.status(401).json({ message: 'Invalid Google token payload' });
       return;
     }
@@ -70,13 +80,17 @@ authRouter.post('/google', async (req, res) => {
       name: payload.name ?? payload.email,
       picture: payload.picture,
     };
-  } catch {
+    log.info({ email: googlePayload.email, googleSub: googlePayload.sub }, 'Google token verified');
+  } catch (err) {
+    log.warn({ err }, 'Google token verification failed');
     res.status(401).json({ message: 'Google token verification failed' });
     return;
   }
 
   // 2. Upsert user — insert on first sign-in, update avatar/name on subsequent ones
   try {
+    log.debug({ email: googlePayload.email }, 'Upserting user in app_user…');
+
     const result = await pool.query<AppUserRow>(
       `INSERT INTO app_user (email, display_name, avatar_uri, google_id)
        VALUES ($1, $2, $3, $4)
@@ -90,8 +104,17 @@ authRouter.post('/google', async (req, res) => {
 
     const user = result.rows[0];
 
+    // Detect new vs returning user from whether the row was inserted or updated.
+    // pg doesn't expose xmax easily, so we use rowCount as a proxy — always 1 here.
+    // We log the userId to make it easy to grep sessions per user.
+    log.info(
+      { userId: user.id, email: user.email, displayName: user.display_name },
+      'User upserted successfully',
+    );
+
     // 3. Sign application JWT (7-day expiry)
     const token = jwt.sign({ sub: user.id }, config.jwtSecret, { expiresIn: '7d' });
+    log.debug({ userId: user.id }, 'App JWT issued (7d expiry)');
 
     res.json({
       token,
@@ -102,8 +125,11 @@ authRouter.post('/google', async (req, res) => {
         avatarUri: user.avatar_uri ?? null,
       },
     });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Database error';
+
+    log.info({ userId: user.id }, 'Sign-in complete — token sent to client');
+  } catch (err) {
+    log.error({ err, email: googlePayload.email }, 'Database error during user upsert');
+    const msg = err instanceof Error ? err.message : 'Database error';
     res.status(500).json({ message: msg });
   }
 });

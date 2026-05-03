@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { getPool } from '../../db/pool.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ module: 'sessions' });
 
 type SetEntry = { id: string; reps: string; weightKg: string; done: boolean };
 type ExerciseEntry = { id: string; name: string; sets: SetEntry[] };
@@ -28,85 +31,130 @@ function mapSession(row: {
 export const sessionsRouter = Router();
 
 sessionsRouter.get('/active', async (_req, res) => {
-  const pool = getPool()!;
   const { userId } = res.locals;
-  const r = await pool.query(
-    `SELECT id, started_at, ended_at, exercises
-     FROM workout_session
-     WHERE user_id = $1 AND ended_at IS NULL
-     ORDER BY started_at DESC
-     LIMIT 1`,
-    [userId],
-  );
-  const row = r.rows[0];
-  res.json(row ? mapSession(row) : null);
+  log.debug({ userId }, 'Fetching active session');
+  try {
+    const pool = getPool()!;
+    const r = await pool.query(
+      `SELECT id, started_at, ended_at, exercises
+       FROM workout_session
+       WHERE user_id = $1 AND ended_at IS NULL
+       ORDER BY started_at DESC
+       LIMIT 1`,
+      [userId],
+    );
+    const row = r.rows[0];
+    if (row) {
+      log.debug({ userId, sessionId: row.id }, 'Active session found');
+    } else {
+      log.debug({ userId }, 'No active session');
+    }
+    res.json(row ? mapSession(row) : null);
+  } catch (err) {
+    log.error({ err, userId }, 'Failed to fetch active session');
+    res.status(500).json({ message: 'Failed to fetch active session' });
+  }
 });
 
 sessionsRouter.post('/', async (_req, res) => {
-  const pool = getPool()!;
   const { userId } = res.locals;
-  await pool.query(
-    `UPDATE workout_session SET ended_at = now()
-     WHERE user_id = $1 AND ended_at IS NULL`,
-    [userId],
-  );
-  const id = randomUUID();
-  const startedAt = new Date();
-  await pool.query(
-    `INSERT INTO workout_session (id, user_id, started_at, exercises)
-     VALUES ($1, $2, $3, '[]'::jsonb)`,
-    [id, userId, startedAt],
-  );
-  res.status(201).json({
-    id,
-    startedAt: startedAt.toISOString(),
-    exercises: [],
-  });
+  log.debug({ userId }, 'Starting new workout session');
+  try {
+    const pool = getPool()!;
+
+    // Close any lingering open session
+    const closed = await pool.query(
+      `UPDATE workout_session SET ended_at = now()
+       WHERE user_id = $1 AND ended_at IS NULL
+       RETURNING id`,
+      [userId],
+    );
+    if (closed.rowCount && closed.rowCount > 0) {
+      log.info({ userId, closedSessionId: closed.rows[0]?.id }, 'Auto-closed previous open session');
+    }
+
+    const id = randomUUID();
+    const startedAt = new Date();
+    await pool.query(
+      `INSERT INTO workout_session (id, user_id, started_at, exercises)
+       VALUES ($1, $2, $3, '[]'::jsonb)`,
+      [id, userId, startedAt],
+    );
+    log.info({ userId, sessionId: id }, 'Workout session started');
+    res.status(201).json({ id, startedAt: startedAt.toISOString(), exercises: [] });
+  } catch (err) {
+    log.error({ err, userId }, 'Failed to start workout session');
+    res.status(500).json({ message: 'Failed to start session' });
+  }
 });
 
 sessionsRouter.post('/:id/end', async (req, res) => {
-  const pool = getPool()!;
   const { userId } = res.locals;
-  const r = await pool.query(
-    `UPDATE workout_session
-     SET ended_at = now()
-     WHERE id = $1 AND user_id = $2 AND ended_at IS NULL
-     RETURNING id, started_at, ended_at, exercises`,
-    [req.params.id, userId],
-  );
-  const row = r.rows[0];
-  if (!row) {
-    res.status(404).json({ message: 'Active session not found' });
-    return;
+  const { id } = req.params;
+  log.debug({ userId, sessionId: id }, 'Ending workout session');
+  try {
+    const pool = getPool()!;
+    const r = await pool.query(
+      `UPDATE workout_session
+       SET ended_at = now()
+       WHERE id = $1 AND user_id = $2 AND ended_at IS NULL
+       RETURNING id, started_at, ended_at, exercises`,
+      [id, userId],
+    );
+    const row = r.rows[0];
+    if (!row) {
+      log.warn({ userId, sessionId: id }, 'Active session not found to end');
+      res.status(404).json({ message: 'Active session not found' });
+      return;
+    }
+    const session = mapSession(row);
+    const durationMs =
+      new Date(session.endedAt!).getTime() - new Date(session.startedAt).getTime();
+    log.info(
+      { userId, sessionId: id, durationMs, exerciseCount: session.exercises.length },
+      'Workout session ended',
+    );
+    res.json(session);
+  } catch (err) {
+    log.error({ err, userId, sessionId: id }, 'Failed to end workout session');
+    res.status(500).json({ message: 'Failed to end session' });
   }
-  res.json(mapSession(row));
 });
 
 sessionsRouter.post('/:id/exercises', async (req, res) => {
-  const pool = getPool()!;
   const { userId } = res.locals;
+  const { id } = req.params;
   const name =
     typeof req.body?.name === 'string' && req.body.name.trim() ? req.body.name.trim() : 'Exercise';
-  const r = await pool.query<{ exercises: unknown }>(
-    `SELECT exercises FROM workout_session
-     WHERE id = $1 AND user_id = $2 AND ended_at IS NULL`,
-    [req.params.id, userId],
-  );
-  const row = r.rows[0];
-  if (!row) {
-    res.status(404).json({ message: 'Active session not found' });
-    return;
+  log.debug({ userId, sessionId: id, name }, 'Adding exercise to session');
+  try {
+    const pool = getPool()!;
+    const r = await pool.query<{ exercises: unknown }>(
+      `SELECT exercises FROM workout_session
+       WHERE id = $1 AND user_id = $2 AND ended_at IS NULL`,
+      [id, userId],
+    );
+    const row = r.rows[0];
+    if (!row) {
+      log.warn({ userId, sessionId: id }, 'Active session not found for adding exercise');
+      res.status(404).json({ message: 'Active session not found' });
+      return;
+    }
+    const exercises = Array.isArray(row.exercises) ? ([...row.exercises] as ExerciseEntry[]) : [];
+    const exercise: ExerciseEntry = {
+      id: randomUUID(),
+      name,
+      sets: [{ id: randomUUID(), reps: '10', weightKg: '', done: false }],
+    };
+    exercises.push(exercise);
+    await pool.query(`UPDATE workout_session SET exercises = $1::jsonb WHERE id = $2`, [
+      JSON.stringify(exercises),
+      id,
+    ]);
+    log.info({ userId, sessionId: id, exerciseId: exercise.id, name }, 'Exercise added to session');
+    res.status(201).json(exercise);
+  } catch (err) {
+    log.error({ err, userId, sessionId: id }, 'Failed to add exercise to session');
+    res.status(500).json({ message: 'Failed to add exercise' });
   }
-  const exercises = Array.isArray(row.exercises) ? ([...row.exercises] as ExerciseEntry[]) : [];
-  const exercise: ExerciseEntry = {
-    id: randomUUID(),
-    name,
-    sets: [{ id: randomUUID(), reps: '10', weightKg: '', done: false }],
-  };
-  exercises.push(exercise);
-  await pool.query(`UPDATE workout_session SET exercises = $1::jsonb WHERE id = $2`, [
-    JSON.stringify(exercises),
-    req.params.id,
-  ]);
-  res.status(201).json(exercise);
 });
