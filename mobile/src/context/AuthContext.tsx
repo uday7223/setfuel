@@ -36,11 +36,23 @@ GoogleSignin.configure({
 });
 
 async function exchangeGoogleToken(idToken: string): Promise<{ token: string; user: AuthUser }> {
-  const res = await fetch(`${AUTH_BASE_URL}/auth/google`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ idToken }),
-  });
+  const url = `${AUTH_BASE_URL}/auth/google`;
+
+  if (!AUTH_BASE_URL) {
+    throw new Error('API URL is not configured. Set EXPO_PUBLIC_API_BASE_URL in .env and restart Metro.');
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown network error';
+    throw new Error(`Cannot reach backend at ${url} — ${msg}`);
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
