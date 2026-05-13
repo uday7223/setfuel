@@ -12,7 +12,7 @@
       },
       "env": {
         "EXPO_PUBLIC_USE_LOCAL": "false",
-        "EXPO_PUBLIC_API_BASE_URL": "http://10.247.114.253:3001/v1",
+        "EXPO_PUBLIC_API_BASE_URL": "https://setfuel-api.onrender.com/v1",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "325107076822-v06deego2oir50o5mn3dnt4nds9ef1el.apps.googleusercontent.com"
       }
     },
@@ -23,7 +23,7 @@
       },
       "env": {
         "EXPO_PUBLIC_USE_LOCAL": "false",
-        "EXPO_PUBLIC_API_BASE_URL": "http://10.247.114.253:3001/v1",
+        "EXPO_PUBLIC_API_BASE_URL": "https://setfuel-api.onrender.com/v1",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "325107076822-v06deego2oir50o5mn3dnt4nds9ef1el.apps.googleusercontent.com"
       }
     },
@@ -33,6 +33,7 @@
       },
       "env": {
         "EXPO_PUBLIC_USE_LOCAL": "false",
+        "EXPO_PUBLIC_API_BASE_URL": "https://setfuel-api.onrender.com/v1",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "325107076822-v06deego2oir50o5mn3dnt4nds9ef1el.apps.googleusercontent.com"
       }
     }
