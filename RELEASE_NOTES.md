@@ -37,6 +37,31 @@ Copy this section for each new version:
 
 ---
 
+## [1.2.1] - 2026-05-13
+
+### Build metadata
+- **Scope:** Backend + hosting (no mandatory new mobile APK for these changes).
+- Mobile app (`expo.version`): still **1.2.0** / Android **versionCode** 3 until you ship a build that points production traffic at the new API URL.
+
+### Added
+- **Production PostgreSQL on Neon** — managed Postgres hosts the SetFuel schema; connection string supplied to the backend as `DATABASE_URL` (pooled endpoint recommended for serverless-style hosts).
+- **Production API on Render** — Node web service runs the compiled backend (`npm run build` → `npm start`), with environment variables for DB, JWT, Google OAuth, and logging.
+- **Live deployments** — database and API are deployed and reachable from clients configured with the public Render base URL.
+
+### Changed
+- **Backend `package.json`** — `typescript` and `@types/cors`, `@types/express`, `@types/jsonwebtoken`, `@types/node`, and `@types/pg` moved from `devDependencies` to **`dependencies`** so Render’s production install (which often skips dev dependencies) still installs everything **`tsc`** needs.
+- **`backend/tsconfig.json`** — `compilerOptions.types` set to **`["node"]`** so Node globals (`process`, `node:fs`, `node:crypto`, etc.) typecheck consistently in CI and on Render.
+
+### Fixed
+- **Render build failure (`TS7016` / `TS2591` / implicit `any` on Express handlers)** — caused by missing `@types/*` and `typescript` when `npm install` ran without dev dependencies; resolved by the dependency and tsconfig changes above.
+
+### Notes
+- **Mobile:** set `EXPO_PUBLIC_API_BASE_URL` in `mobile/.env` (and EAS secrets for release builds) to your **Render service URL** (e.g. `https://<service>.onrender.com`) so the app talks to the live API.
+- **Render:** configure `DATABASE_URL` (Neon), `JWT_SECRET`, `GOOGLE_CLIENT_ID`, and any other vars from `backend/.env.example`; run migrations against Neon (`npm run db:migrate` with env pointing at Neon, or equivalent) before relying on production data paths.
+- **Neon:** use the project’s connection string from the Neon dashboard; prefer the **pooled** connection if Render’s docs recommend it for `pg`.
+
+---
+
 ## [1.2.0] - 2026-05-04
 
 ### Build metadata
