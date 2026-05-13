@@ -7,17 +7,31 @@ import React, {
   useState,
 } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { AUTH_BASE_URL } from '../constant';
-import { loadGoogleSigninModule, nativeGoogleSignOutSilently } from '../lib/nativeGoogleSignin';
+import { AUTH_BASE_URL, USE_LOCAL } from '../constant';
+import {
+  isExpoGoEnvironment,
+  loadGoogleSigninModule,
+  nativeGoogleSignOutSilently,
+} from '../lib/nativeGoogleSignin';
+import { PLACEHOLDER_AVATAR } from '../services/userService';
 import { setAuthToken } from '../services/api';
 
 const SECURE_STORE_KEY = 'setfuel_auth_token';
+/** Marker stored in SecureStore when signed in via Expo Go + local mode (no JWT). */
+const EXPO_GO_OFFLINE_SESSION = '__setfuel_expo_go_local_offline__';
 
 export type AuthUser = {
   id: string;
   email: string;
   displayName: string;
   avatarUri: string | null;
+};
+
+const EXPO_GO_DEV_USER: AuthUser = {
+  id: 'local-user-1',
+  displayName: 'Uday',
+  email: 'uday@setfuel.app',
+  avatarUri: PLACEHOLDER_AVATAR,
 };
 
 type AuthContextValue = {
@@ -70,6 +84,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const storedToken = await SecureStore.getItemAsync(SECURE_STORE_KEY);
         if (!storedToken) return;
 
+        if (storedToken === EXPO_GO_OFFLINE_SESSION) {
+          if (!cancelled && USE_LOCAL) {
+            setAuthToken(null);
+            setUser(EXPO_GO_DEV_USER);
+            setIsSignedIn(true);
+          } else if (!cancelled) {
+            await SecureStore.deleteItemAsync(SECURE_STORE_KEY);
+            setAuthToken(null);
+          }
+          return;
+        }
+
         // Validate the stored token is still accepted by the backend
         setAuthToken(storedToken);
         const profileRes = await fetch(`${AUTH_BASE_URL}/v1/user/profile`, {
@@ -100,6 +126,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signInWithGoogle = useCallback(async () => {
+    if (isExpoGoEnvironment() && USE_LOCAL) {
+      await SecureStore.setItemAsync(SECURE_STORE_KEY, EXPO_GO_OFFLINE_SESSION);
+      setAuthToken(null);
+      setUser(EXPO_GO_DEV_USER);
+      setIsSignedIn(true);
+      return;
+    }
+    if (isExpoGoEnvironment()) {
+      throw new Error(
+        'Google Sign-In is not available in Expo Go (native module RNGoogleSignin is missing).\n\n' +
+          'Choose one:\n' +
+          '• Run a dev build: from the mobile folder execute `npx expo run:android` (or install your EAS APK), then open that app—not Expo Go.\n' +
+          '• Stay in Expo Go: set EXPO_PUBLIC_USE_LOCAL=true in mobile/.env, restart Metro with `npx expo start -c`, then tap Continue again for offline/local data (no Google).',
+      );
+    }
+
     let signInCancelledCode: string | number | undefined;
     try {
       const { GoogleSignin, statusCodes } = await loadGoogleSigninModule();

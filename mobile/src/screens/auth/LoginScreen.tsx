@@ -17,6 +17,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { useAuth } from '../../context/AuthContext';
+import { USE_LOCAL } from '../../constant';
+import { isExpoGoEnvironment } from '../../lib/nativeGoogleSignin';
 import { authLanding, dashboard, spacing } from '../../theme';
 
 const FOOTER_IMAGE_URI =
@@ -92,6 +94,10 @@ export function LoginScreen() {
   const badgeBg = 'rgba(26, 58, 78, 0.5)';
   const badgeLabel = '#c0d8e8';
 
+  const expoGo = isExpoGoEnvironment();
+  const showExpoGoLocalHint = expoGo && USE_LOCAL;
+  const showExpoGoApiHint = expoGo && !USE_LOCAL;
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: d.surfaceContainerLow }]} edges={['top', 'bottom']}>
       <ScrollView
@@ -130,6 +136,22 @@ export function LoginScreen() {
             </Text>
           </View>
 
+          {showExpoGoLocalHint ? (
+            <View style={[styles.infoBanner, { borderColor: 'rgba(125, 211, 252, 0.35)', backgroundColor: 'rgba(125, 211, 252, 0.08)' }]}>
+              <Text style={[styles.infoBannerText, { color: d.secondary }]}>
+                You are in Expo Go with local mode on. Tap Continue to sign in with offline data (Google is skipped).
+              </Text>
+            </View>
+          ) : null}
+
+          {showExpoGoApiHint ? (
+            <View style={[styles.infoBanner, { borderColor: 'rgba(251, 191, 36, 0.4)', backgroundColor: 'rgba(251, 191, 36, 0.1)' }]}>
+              <Text style={[styles.infoBannerText, { color: d.onSurfaceVariant }]}>
+                Expo Go cannot load native Google Sign-In. Run `npx expo run:android` from the mobile folder (or use your EAS APK), or set EXPO_PUBLIC_USE_LOCAL=true and restart Metro to try the app offline here.
+              </Text>
+            </View>
+          ) : null}
+
           {authError ? (
             <View style={[styles.errorBanner, { backgroundColor: 'rgba(234, 67, 53, 0.1)', borderColor: 'rgba(234, 67, 53, 0.3)' }]}>
               <Text style={[styles.errorText, { color: '#EA4335' }]}>{authError}</Text>
@@ -159,7 +181,11 @@ export function LoginScreen() {
                 <GoogleIcon size={20} />
               )}
               <Text style={[styles.googleLabel, { color: d.onSurfaceVariant }]}>
-                {signingIn ? 'Signing in…' : 'Continue with Google'}
+                {signingIn
+                  ? 'Signing in…'
+                  : showExpoGoLocalHint
+                    ? 'Continue (local in Expo Go)'
+                    : 'Continue with Google'}
               </Text>
             </View>
           </Pressable>
@@ -294,6 +320,18 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
     lineHeight: 18,
+  },
+  infoBanner: {
+    alignSelf: 'stretch',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  infoBannerText: {
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
   },
   googleBtn: {
     alignSelf: 'stretch',

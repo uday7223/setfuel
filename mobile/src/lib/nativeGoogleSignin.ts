@@ -2,15 +2,24 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { GOOGLE_WEB_CLIENT_ID } from '../constant';
 
-/** Shown when the JS bundle runs inside Expo Go, which does not ship RNGoogleSignin. */
-export const GOOGLE_NATIVE_UNAVAILABLE_EXPO_GO =
-  'Google Sign-In is not available in Expo Go (native module RNGoogleSignin is missing). Use a dev build: from the mobile folder run `npx expo run:android`, or install your EAS APK, and open that app—not Expo Go.';
+const EXPO_GO_NATIVE_BLOCK =
+  'RNGoogleSignin is not available in Expo Go. Use `npx expo run:android` / an EAS APK, or set EXPO_PUBLIC_USE_LOCAL=true for offline Expo Go (see login instructions).';
 
 let configureOnce = false;
 
+/**
+ * True when the JS runs inside the store Expo Go client (no custom native binary).
+ * Uses executionEnvironment + appOwnership for SDK 54 compatibility.
+ */
+export function isExpoGoEnvironment(): boolean {
+  if (Constants.appOwnership === 'expo') return true;
+  if (Constants.executionEnvironment === 'storeClient') return true;
+  return false;
+}
+
 export function isNativeGoogleSignInSupported(): boolean {
   if (Platform.OS === 'web') return false;
-  return Constants.appOwnership !== 'expo';
+  return !isExpoGoEnvironment();
 }
 
 /**
@@ -23,8 +32,8 @@ export async function loadGoogleSigninModule(): Promise<
   if (Platform.OS === 'web') {
     throw new Error('Google Sign-In is not supported on web in this build.');
   }
-  if (Constants.appOwnership === 'expo') {
-    throw new Error(GOOGLE_NATIVE_UNAVAILABLE_EXPO_GO);
+  if (isExpoGoEnvironment()) {
+    throw new Error(EXPO_GO_NATIVE_BLOCK);
   }
 
   const webClientId = GOOGLE_WEB_CLIENT_ID.trim();
