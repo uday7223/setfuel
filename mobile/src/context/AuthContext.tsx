@@ -6,9 +6,9 @@ import React, {
   useMemo,
   useState,
 } from 'react';
-import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import * as SecureStore from 'expo-secure-store';
-import { AUTH_BASE_URL, GOOGLE_WEB_CLIENT_ID } from '../constant';
+import { AUTH_BASE_URL } from '../constant';
+import { loadGoogleSigninModule, nativeGoogleSignOutSilently } from '../lib/nativeGoogleSignin';
 import { setAuthToken } from '../services/api';
 
 const SECURE_STORE_KEY = 'setfuel_auth_token';
@@ -29,11 +29,6 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-GoogleSignin.configure({
-  webClientId: GOOGLE_WEB_CLIENT_ID,
-  offlineAccess: false,
-});
 
 async function exchangeGoogleToken(idToken: string): Promise<{ token: string; user: AuthUser }> {
   const url = `${AUTH_BASE_URL}/auth/google`;
@@ -105,7 +100,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signInWithGoogle = useCallback(async () => {
+    let signInCancelledCode: string | number | undefined;
     try {
+      const { GoogleSignin, statusCodes } = await loadGoogleSigninModule();
+      signInCancelledCode = statusCodes.SIGN_IN_CANCELLED;
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const signInResult = await GoogleSignin.signIn();
 
@@ -119,12 +117,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(authUser);
       setIsSignedIn(true);
     } catch (e: unknown) {
-      // Re-throw user-cancel as a recognisable sentinel so the UI can ignore it
       if (
+        signInCancelledCode !== undefined &&
         e != null &&
         typeof e === 'object' &&
         'code' in e &&
-        (e as { code: unknown }).code === statusCodes.SIGN_IN_CANCELLED
+        (e as { code: unknown }).code === signInCancelledCode
       ) {
         return;
       }
@@ -133,11 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    try {
-      await GoogleSignin.signOut();
-    } catch {
-      // Ignore Google sign-out errors — we always clear local state
-    }
+    await nativeGoogleSignOutSilently();
     await SecureStore.deleteItemAsync(SECURE_STORE_KEY);
     setAuthToken(null);
     setUser(null);
