@@ -15,14 +15,14 @@ type AppHeaderProps = {
 
 export function AppHeader({ avatarUri, topInset, onProfilePress }: AppHeaderProps) {
   const brand = (
-    <>
+    <View style={styles.brandRow}>
       <View style={styles.avatarWrap}>
         {avatarUri && (
           <Image source={{ uri: avatarUri }} style={styles.avatarImg} resizeMode="cover" />
         )}
       </View>
       <Text style={styles.wordmark}>SetFuel</Text>
-    </>
+    </View>
   );
 
   const inner = (
@@ -33,12 +33,12 @@ export function AppHeader({ avatarUri, topInset, onProfilePress }: AppHeaderProp
           accessibilityRole="button"
           accessibilityLabel="Open profile"
           hitSlop={4}
-          style={({ pressed }) => [styles.left, pressed && { opacity: 0.88 }]}
+          style={({ pressed }) => [pressed && { opacity: 0.88 }]}
         >
           {brand}
         </Pressable>
       ) : (
-        <View style={styles.left}>{brand}</View>
+        brand
       )}
       <Pressable
         accessibilityRole="button"
@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  left: {
+  brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -97,9 +97,11 @@ const styles = StyleSheet.create({
   },
   wordmark: {
     fontSize: 24,
+    lineHeight: 28,
     fontWeight: '900',
     letterSpacing: -0.6,
     color: d.primary,
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
   },
   iconBtn: {
     width: 48,

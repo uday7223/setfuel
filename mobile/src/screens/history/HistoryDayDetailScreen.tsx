@@ -1,28 +1,25 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
-import type { RouteProp } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatDisplayDate, formatTimeRange } from '../../lib/dateUtils';
-import type { HistoryStackParamList } from '../../navigation/types';
 import { historyService } from '../../services';
 import type { DayHistoryDetail, ExerciseEntry, WorkoutSessionWithStats } from '../../types';
 import { dashboard, spacing } from '../../theme';
 
 const d = dashboard;
 
-type Route = RouteProp<HistoryStackParamList, 'HistoryDayDetail'>;
-type Nav = NativeStackNavigationProp<HistoryStackParamList, 'HistoryDayDetail'>;
+export type HistoryDayDetailPanelProps = {
+  date: string;
+  onClose: () => void;
+};
 
 function SessionStatsRow({ session }: { session: WorkoutSessionWithStats }) {
   const { stats } = session;
@@ -80,9 +77,7 @@ function SessionCard({ session, index }: { session: WorkoutSessionWithStats; ind
         accessibilityRole="button"
       >
         <View style={{ flex: 1 }}>
-          <Text style={[styles.cardTitle, { color: d.onSurface }]}>
-            Workout {index + 1}
-          </Text>
+          <Text style={[styles.cardTitle, { color: d.onSurface }]}>Workout {index + 1}</Text>
           <Text style={[styles.cardMeta, { color: d.secondary }]}>
             {formatTimeRange(session.startedAt, session.endedAt)}
           </Text>
@@ -103,10 +98,8 @@ function SessionCard({ session, index }: { session: WorkoutSessionWithStats; ind
   );
 }
 
-export function HistoryDayDetailScreen() {
-  const navigation = useNavigation<Nav>();
-  const route = useRoute<Route>();
-  const { date } = route.params;
+/** Read-only day detail (workouts + meals). Rendered as overlay from History calendar. */
+export function HistoryDayDetailPanel({ date, onClose }: HistoryDayDetailPanelProps) {
   const insets = useSafeAreaInsets();
   const [detail, setDetail] = useState<DayHistoryDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -126,19 +119,16 @@ export function HistoryDayDetailScreen() {
     }
   }, [date]);
 
-  useFocusEffect(
-    useCallback(() => {
-      StatusBar.setBarStyle('light-content');
-      void load();
-    }, [load]),
-  );
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const diet = detail?.dietSummary;
 
   return (
     <View style={[styles.root, { backgroundColor: d.background }]}>
       <View style={[styles.topBar, { paddingTop: insets.top + spacing.xs }]}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12} accessibilityLabel="Back">
+        <Pressable onPress={onClose} hitSlop={12} accessibilityLabel="Back">
           <Ionicons name="arrow-back" size={24} color={d.onSurface} />
         </Pressable>
         <View style={styles.topBarText}>
@@ -243,7 +233,12 @@ const styles = StyleSheet.create({
   cardMeta: { fontSize: 13, marginTop: 2 },
   kcalBig: { fontSize: 26, fontWeight: '800', marginTop: spacing.sm },
   kcalGoal: { fontSize: 16, fontWeight: '600' },
-  mealRow: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.08)' },
+  mealRow: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+  },
   mealName: { fontSize: 15, fontWeight: '600' },
   mealMeta: { fontSize: 13, marginTop: 2 },
   emptyHint: { fontSize: 14, marginTop: spacing.sm },

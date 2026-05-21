@@ -20,6 +20,8 @@
     },
     "android": {
       "versionCode": 3,
+      "backgroundColor": "#0a0e1a",
+      "navigationBarColor": "#0a0e1a",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

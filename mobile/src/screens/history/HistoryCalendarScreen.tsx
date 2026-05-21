@@ -1,6 +1,9 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
+  Dimensions,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -9,23 +12,28 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
+import Animated, {
+  Easing,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { USE_LOCAL } from '../../constant';
 import { buildMonthGrid, endOfMonth, startOfMonth, toLocalDateString } from '../../lib/dateUtils';
-import type { HistoryStackParamList } from '../../navigation/types';
 import { historyService } from '../../services';
 import type { HistoryCalendarDay } from '../../types';
 import { dashboard, spacing } from '../../theme';
+import { HistoryDayDetailPanel } from './HistoryDayDetailScreen';
 
 const d = dashboard;
 const WEEK_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-
-type Nav = NativeStackNavigationProp<HistoryStackParamList, 'HistoryCalendar'>;
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const SLIDE_MS = 280;
 
 export function HistoryCalendarScreen() {
-  const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -33,6 +41,10 @@ export function HistoryCalendarScreen() {
   const [days, setDays] = useState<HistoryCalendarDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadedMonthKey, setLoadedMonthKey] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  const slideX = useSharedValue(SCREEN_WIDTH);
 
   const monthLabel = useMemo(
     () =>
@@ -51,6 +63,8 @@ export function HistoryCalendarScreen() {
 
   const weeks = useMemo(() => buildMonthGrid(viewYear, viewMonth), [viewYear, viewMonth]);
 
+  const monthKey = `${viewYear}-${viewMonth}`;
+
   const loadMonth = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -59,21 +73,66 @@ export function HistoryCalendarScreen() {
       const to = toLocalDateString(endOfMonth(viewYear, viewMonth));
       const res = await historyService.getCalendar(from, to);
       setDays(res.days);
+      setLoadedMonthKey(monthKey);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Could not load history';
       setError(msg);
-      setDays([]);
+      if (loadedMonthKey !== monthKey) setDays([]);
     } finally {
       setLoading(false);
     }
+  }, [viewYear, viewMonth, monthKey, loadedMonthKey]);
+
+  useEffect(() => {
+    void loadMonth();
   }, [viewYear, viewMonth]);
 
   useFocusEffect(
     useCallback(() => {
       StatusBar.setBarStyle('light-content');
-      void loadMonth();
-    }, [loadMonth]),
+      if (Platform.OS === 'android') {
+        StatusBar.setBackgroundColor(d.background);
+      }
+    }, []),
   );
+
+  const finishCloseDay = useCallback(() => {
+    setSelectedDate(null);
+  }, []);
+
+  const closeDay = useCallback(() => {
+    slideX.value = withTiming(
+      SCREEN_WIDTH,
+      { duration: SLIDE_MS, easing: Easing.in(Easing.cubic) },
+      (finished) => {
+        if (finished) runOnJS(finishCloseDay)();
+      },
+    );
+  }, [finishCloseDay, slideX]);
+
+  const openDay = useCallback(
+    (date: string) => {
+      setSelectedDate(date);
+      slideX.value = SCREEN_WIDTH;
+      slideX.value = withTiming(0, { duration: SLIDE_MS, easing: Easing.out(Easing.cubic) });
+    },
+    [slideX],
+  );
+
+  useEffect(() => {
+    if (!selectedDate) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      closeDay();
+      return true;
+    });
+    return () => sub.remove();
+  }, [selectedDate, closeDay]);
+
+  const detailSlideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: slideX.value }],
+  }));
+
+  const showFullLoader = loading && loadedMonthKey !== monthKey;
 
   const goPrevMonth = () => {
     if (viewMonth === 0) {
@@ -91,10 +150,6 @@ export function HistoryCalendarScreen() {
     } else {
       setViewMonth((m) => m + 1);
     }
-  };
-
-  const openDay = (date: string) => {
-    navigation.navigate('HistoryDayDetail', { date });
   };
 
   return (
@@ -148,11 +203,11 @@ export function HistoryCalendarScreen() {
         ))}
       </View>
 
-      {loading ? (
+      {showFullLoader ? (
         <View style={styles.loader}>
           <ActivityIndicator size="large" color={d.brandTeal} />
         </View>
-      ) : error ? (
+      ) : error && days.length === 0 ? (
         <View style={styles.loader}>
           <Text style={[styles.errorText, { color: d.secondary }]}>{error}</Text>
           <Pressable onPress={() => void loadMonth()} style={[styles.retryBtn, { backgroundColor: d.card }]}>
@@ -163,6 +218,7 @@ export function HistoryCalendarScreen() {
         <ScrollView
           contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
           showsVerticalScrollIndicator={false}
+          scrollEnabled={!selectedDate}
         >
           {weeks.map((week, wi) => (
             <View key={`w-${wi}`} style={styles.weekRow}>
@@ -175,7 +231,6 @@ export function HistoryCalendarScreen() {
                 const isToday = dateStr === toLocalDateString(today);
                 const hasWorkout = info?.hasWorkout ?? false;
                 const hasMeals = info?.hasMeals ?? false;
-                const hasAny = hasWorkout || hasMeals;
 
                 return (
                   <Pressable
@@ -183,7 +238,7 @@ export function HistoryCalendarScreen() {
                     style={[
                       styles.dayCell,
                       isToday && { borderColor: d.primary, borderWidth: 1 },
-                      hasAny && { backgroundColor: `${d.card}` },
+                      (hasWorkout || hasMeals) && { backgroundColor: d.card },
                     ]}
                     onPress={() => openDay(dateStr)}
                     accessibilityRole="button"
@@ -192,7 +247,7 @@ export function HistoryCalendarScreen() {
                     <Text
                       style={[
                         styles.dayNum,
-                        { color: hasAny ? d.onSurface : d.onSurfaceVariant },
+                        { color: hasWorkout || hasMeals ? d.onSurface : d.onSurfaceVariant },
                         isToday && { color: d.primary, fontWeight: '800' },
                       ]}
                     >
@@ -213,12 +268,25 @@ export function HistoryCalendarScreen() {
           ))}
         </ScrollView>
       )}
+
+      {selectedDate ? (
+        <Animated.View
+          style={[styles.detailOverlay, detailSlideStyle, { backgroundColor: d.background }]}
+        >
+          <HistoryDayDetailPanel date={selectedDate} onClose={closeDay} />
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  detailOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
+    elevation: 20,
+  },
   header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
   title: { fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
   subtitle: { fontSize: 14, marginTop: 4 },

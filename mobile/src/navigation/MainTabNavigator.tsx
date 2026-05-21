@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { DietTrackerScreen } from '../screens/diet/DietTrackerScreen';
 import { HomeScreen } from '../screens/home/HomeScreen';
 import { WorkoutTrackerScreen } from '../screens/workout/WorkoutTrackerScreen';
-import { HistoryStackNavigator } from './HistoryStackNavigator';
+import { HistoryCalendarScreen } from '../screens/history/HistoryCalendarScreen';
 import { dashboard } from '../theme';
 import type { MainTabParamList } from './types';
 
@@ -48,6 +48,7 @@ export function MainTabNavigator() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        sceneStyle: { backgroundColor: d.background },
         tabBarActiveTintColor: d.primary,
         tabBarInactiveTintColor: d.onSurfaceVariant,
         tabBarLabelStyle: styles.tabLabel,
@@ -88,7 +89,7 @@ export function MainTabNavigator() {
       />
       <Tab.Screen
         name="History"
-        component={HistoryStackNavigator}
+        component={HistoryCalendarScreen}
         options={{
           tabBarLabel: 'HISTORY',
           tabBarIcon: ({ color, size, focused }) => (

@@ -1,2 +1,2 @@
 export { HistoryCalendarScreen } from './HistoryCalendarScreen';
-export { HistoryDayDetailScreen } from './HistoryDayDetailScreen';
+export { HistoryDayDetailPanel } from './HistoryDayDetailScreen';
