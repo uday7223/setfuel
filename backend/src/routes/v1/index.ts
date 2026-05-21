@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireUser } from '../../middleware/requireUser.js';
 import { exercisesRouter } from './exercises.js';
+import { historyRouter } from './history.js';
 import { mealsRouter } from './meals.js';
 import { programsRouter } from './programs.js';
 import { sessionsRouter } from './sessions.js';
@@ -16,8 +17,12 @@ v1Router.get('/', (_req, res) => {
       'GET /user/profile',
       'GET /user/dashboard-summary',
       'GET|POST|PUT|DELETE /programs',
+      'GET /sessions?from=&to=',
+      'GET /sessions/:id',
       'GET /sessions/active',
       'POST /sessions',
+      'GET /history/calendar?from=&to=',
+      'GET /history/day?date=',
       'POST /sessions/:id/end',
       'POST /sessions/:id/exercises',
       'DELETE|PATCH /exercises/:exerciseId',
@@ -35,6 +40,7 @@ v1Router.use(requireUser);
 v1Router.use('/user', userRouter);
 v1Router.use('/programs', programsRouter);
 v1Router.use('/sessions', sessionsRouter);
+v1Router.use('/history', historyRouter);
 v1Router.use('/exercises', exercisesRouter);
 v1Router.use('/sets', setsRouter);
 v1Router.use('/meals', mealsRouter);

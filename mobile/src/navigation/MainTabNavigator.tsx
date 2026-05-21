@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { DietTrackerScreen } from '../screens/diet/DietTrackerScreen';
 import { HomeScreen } from '../screens/home/HomeScreen';
 import { WorkoutTrackerScreen } from '../screens/workout/WorkoutTrackerScreen';
+import { HistoryStackNavigator } from './HistoryStackNavigator';
 import { dashboard } from '../theme';
 import type { MainTabParamList } from './types';
 
@@ -82,6 +83,16 @@ export function MainTabNavigator() {
           tabBarLabel: 'DIET',
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'nutrition' : 'nutrition-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="History"
+        component={HistoryStackNavigator}
+        options={{
+          tabBarLabel: 'HISTORY',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={size} color={color} />
           ),
         }}
       />
