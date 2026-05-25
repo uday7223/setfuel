@@ -37,6 +37,40 @@ Copy this section for each new version:
 
 ---
 
+## [Unreleased]
+
+### Build metadata
+- **Date:** 2026-05-26
+- **App display name:** SetFuel
+- **Scope:** Mobile + backend.
+- **Current mobile app (`expo.version`):** 1.2.0
+- **Current Android versionCode:** 3
+
+### Added
+- **Client timezone forwarding from mobile** — history, meals, session list, and dashboard-summary requests now send the device timezone / offset so backend date-based queries can be evaluated in the user’s local day.
+- **Workout program card actions** — each program card now has its own Start / End control with a confirmation modal before beginning or ending a workout.
+- **Program-start auto load flow** — starting a workout from a program card now loads that program’s exercises into the active session automatically.
+
+### Changed
+- **Local auth mode in dev builds** — `EXPO_PUBLIC_USE_LOCAL=true` now bypasses Google login in native Expo dev builds too, not just Expo Go, while EAS release profiles can still explicitly force normal auth.
+- **History calendar UX** — only days with logged workout or meal data are tappable, and the screen copy now reflects that behavior.
+- **Workout screen session UX** — the generic bottom start area is now a passive hint card, and when programs exist it tells the user to start from the relevant program card.
+- **Routine modal guidance** — the old “Add all to session” action was removed in favor of guidance that explains the new program-start flow.
+- **Program editing controls** — repeated taps on “Add section” and “Add exercise line” no longer stack empty placeholders.
+
+### Fixed
+- **Timezone-related history bugs** — workout / meal entries and calendar dots now land on the correct local day for non-UTC users instead of drifting to the previous day.
+- **Workout program race condition** — rapid taps no longer slip past the program-load guard and duplicate exercises in the active session.
+- **Program card state leakage** — starting one program no longer flips every card into the active “End” state; only the loaded program reflects the running session.
+- **Workout CTA alignment** — the program card action icon and text now align cleanly, and the bottom “Start workout” hint keeps its icon/title layout intact.
+- **Active session / program sync** — when a workout is started from a program card, manual `Add exercise` actions now update both the active session and the currently loaded program; saving new exercise lines on that active program also syncs them into the running session.
+
+### Notes
+- **Release status:** This section tracks work completed after `1.2.1` and should be converted into a numbered release once you decide the next app version / build number.
+- **Mobile rebuild:** No new native dependency was added in this batch; these are JavaScript / TypeScript and backend behavior changes.
+
+---
+
 ## [1.2.1] - 2026-05-13
 
 ### Build metadata
