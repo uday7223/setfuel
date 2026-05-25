@@ -169,10 +169,16 @@ export function WorkoutTrackerScreen() {
   const [exerciseModalOpen, setExerciseModalOpen] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState('');
   const [routineModal, setRoutineModal] = useState<RoutineModalState | null>(null);
+  /** Program IDs already bulk-added to the current active session (reset on start/end). */
+  const [programsAddedToSession, setProgramsAddedToSession] = useState<Set<string>>(() => new Set());
+  const [addingProgramToSession, setAddingProgramToSession] = useState(false);
   const [programs, setPrograms] = useState<PersonalRoutine[]>([]);
   const [programsLoading, setProgramsLoading] = useState(true);
   const [programsError, setProgramsError] = useState<string | null>(null);
   const [programsReloadKey, setProgramsReloadKey] = useState(0);
+  const exercisesRef = useRef<ExerciseEntry[]>([]);
+  const programsAddedToSessionRef = useRef<Set<string>>(new Set());
+  const addingProgramToSessionRef = useRef(false);
   const apiDebounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const isApiMode = !USE_LOCAL;
@@ -186,6 +192,14 @@ export function WorkoutTrackerScreen() {
       Object.values(apiDebounceTimers.current).forEach(clearTimeout);
     };
   }, []);
+
+  useEffect(() => {
+    exercisesRef.current = exercises;
+  }, [exercises]);
+
+  useEffect(() => {
+    programsAddedToSessionRef.current = programsAddedToSession;
+  }, [programsAddedToSession]);
 
   useEffect(() => {
     let cancelled = false;
@@ -281,12 +295,22 @@ export function WorkoutTrackerScreen() {
     [isApiMode],
   );
 
+  const resetProgramSessionState = useCallback(() => {
+    const empty = new Set<string>();
+    exercisesRef.current = [];
+    programsAddedToSessionRef.current = empty;
+    addingProgramToSessionRef.current = false;
+    setExercises([]);
+    setProgramsAddedToSession(empty);
+    setAddingProgramToSession(false);
+  }, []);
+
   const startWorkout = useCallback(async () => {
     if (isApiMode) {
       try {
         await workoutService.startSession();
         setSessionStarted(true);
-        setExercises([]);
+        resetProgramSessionState();
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Could not start session';
         if (Platform.OS === 'web') {
@@ -298,8 +322,8 @@ export function WorkoutTrackerScreen() {
       return;
     }
     setSessionStarted(true);
-    setExercises([]);
-  }, [isApiMode]);
+    resetProgramSessionState();
+  }, [isApiMode, resetProgramSessionState]);
 
   const endWorkoutSession = useCallback(async () => {
     if (isApiMode) {
@@ -310,8 +334,8 @@ export function WorkoutTrackerScreen() {
       }
     }
     setSessionStarted(false);
-    setExercises([]);
-  }, [isApiMode]);
+    resetProgramSessionState();
+  }, [isApiMode, resetProgramSessionState]);
 
   const openAddExercise = useCallback(() => {
     setNewExerciseName('');
@@ -481,33 +505,86 @@ export function WorkoutTrackerScreen() {
   );
 
   const addRoutineExercisesToSession = useCallback(async () => {
-    if (!routineModal || !sessionStarted) return;
-    const names = flattenRoutineItems(routineModal.draft).filter((n) => n.trim().length > 0);
-    if (isApiMode) {
-      try {
+    if (!routineModal || !sessionStarted || addingProgramToSessionRef.current) return;
+
+    addingProgramToSessionRef.current = true;
+    setAddingProgramToSession(true);
+
+    try {
+      const programId = routineModal.draft.id;
+      if (programsAddedToSessionRef.current.has(programId)) {
+        if (Platform.OS === 'web') {
+          globalThis.alert?.('This program was already added to your current workout.');
+        } else {
+          Alert.alert('Already added', 'This program was already added to your current workout.');
+        }
+        return;
+      }
+
+      const existingNames = new Set(
+        exercisesRef.current.map((e) => e.name.trim().toLowerCase()).filter(Boolean),
+      );
+      const names = flattenRoutineItems(routineModal.draft).filter((n) => {
+        const key = n.trim().toLowerCase();
+        if (!key || existingNames.has(key)) return false;
+        existingNames.add(key);
+        return true;
+      });
+
+      if (names.length === 0) {
+        if (Platform.OS === 'web') {
+          globalThis.alert?.('No new exercises to add (empty program or all names already in session).');
+        } else {
+          Alert.alert(
+            'Nothing to add',
+            'No new exercises to add — the program is empty or every exercise is already in your session.',
+          );
+        }
+        return;
+      }
+
+      if (isApiMode) {
         const added: ExerciseEntry[] = [];
         for (const name of names) {
           added.push(await workoutService.addExercise(name));
         }
-        setExercises((prev) => [...prev, ...added]);
-        setRoutineModal(null);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Could not add exercises';
-        if (Platform.OS === 'web') globalThis.alert?.(msg);
-        else Alert.alert('Add to session', msg);
+        setExercises((prev) => {
+          const next = [...prev, ...added];
+          exercisesRef.current = next;
+          return next;
+        });
+      } else {
+        setExercises((prev) => {
+          const next = [
+            ...prev,
+            ...names.map((name) => ({
+              id: localId(),
+              name,
+              sets: [{ id: localId(), reps: '10', weightKg: '', done: false }],
+            })),
+          ];
+          exercisesRef.current = next;
+          return next;
+        });
       }
-      return;
+      const nextProgramsAddedToSession = new Set(programsAddedToSessionRef.current);
+      nextProgramsAddedToSession.add(programId);
+      programsAddedToSessionRef.current = nextProgramsAddedToSession;
+      setProgramsAddedToSession(nextProgramsAddedToSession);
+      setRoutineModal(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not add exercises';
+      if (Platform.OS === 'web') globalThis.alert?.(msg);
+      else Alert.alert('Add to session', msg);
+    } finally {
+      addingProgramToSessionRef.current = false;
+      setAddingProgramToSession(false);
     }
-    setExercises((prev) => [
-      ...prev,
-      ...names.map((name) => ({
-        id: localId(),
-        name,
-        sets: [{ id: localId(), reps: '10', weightKg: '', done: false }],
-      })),
-    ]);
-    setRoutineModal(null);
-  }, [routineModal, sessionStarted, isApiMode]);
+  }, [
+    routineModal,
+    sessionStarted,
+    isApiMode,
+  ]);
 
   const openRoutineModal = useCallback((r: PersonalRoutine, editMode = false) => {
     setRoutineModal({ draft: cloneRoutine(r), editMode });
@@ -671,6 +748,42 @@ export function WorkoutTrackerScreen() {
   const updateDraft = useCallback((updater: (d: PersonalRoutine) => PersonalRoutine) => {
     setRoutineModal((m) => (m ? { ...m, draft: updater(m.draft) } : null));
   }, []);
+
+  /** Avoid stacking empty sections when "Add section" is tapped repeatedly. */
+  const appendProgramSection = useCallback(() => {
+    updateDraft((prev) => {
+      const last = prev.blocks[prev.blocks.length - 1];
+      if (last && last.items.every((line) => !line.trim())) {
+        return prev;
+      }
+      const n = prev.blocks.length + 1;
+      return {
+        ...prev,
+        blocks: [...prev.blocks, { heading: `Section ${n}`, items: [''] }],
+      };
+    });
+  }, [updateDraft]);
+
+  /** Avoid stacking empty exercise lines when "Add exercise line" is tapped repeatedly. */
+  const appendProgramExerciseLine = useCallback(
+    (blockIndex: number) => {
+      updateDraft((prev) => {
+        const block = prev.blocks[blockIndex];
+        if (!block) return prev;
+        const lastLine = block.items[block.items.length - 1];
+        if (lastLine !== undefined && !lastLine.trim()) {
+          return prev;
+        }
+        return {
+          ...prev,
+          blocks: prev.blocks.map((b, i) =>
+            i === blockIndex ? { ...b, items: [...b.items, ''] } : b,
+          ),
+        };
+      });
+    },
+    [updateDraft],
+  );
 
   const confirmResetAllPrograms = useCallback(() => {
     if (Platform.OS === 'web') {
@@ -1201,14 +1314,7 @@ export function WorkoutTrackerScreen() {
                             </View>
                           ))}
                           <Pressable
-                            onPress={() =>
-                              updateDraft((prev) => ({
-                                ...prev,
-                                blocks: prev.blocks.map((b, i) =>
-                                  i === bi ? { ...b, items: [...b.items, ''] } : b,
-                                ),
-                              }))
-                            }
+                            onPress={() => appendProgramExerciseLine(bi)}
                             style={styles.routineAddLineBtn}
                           >
                             <Ionicons name="add" size={18} color={d.primary} />
@@ -1246,12 +1352,7 @@ export function WorkoutTrackerScreen() {
                   {routineModal.editMode ? (
                     <>
                       <Pressable
-                        onPress={() =>
-                          updateDraft((prev) => ({
-                            ...prev,
-                            blocks: [...prev.blocks, { heading: 'Exercises', items: [''] }],
-                          }))
-                        }
+                        onPress={appendProgramSection}
                         style={[styles.routineAddSectionBtn, { borderColor: d.outlineGhost15 }]}
                       >
                         <Ionicons name="albums-outline" size={18} color={d.primary} />
@@ -1285,12 +1386,29 @@ export function WorkoutTrackerScreen() {
                   ) : (
                     <>
                       {sessionStarted ? (
-                        <Pressable
-                          onPress={() => void addRoutineExercisesToSession()}
-                          style={[styles.routinePrimaryBtn, { backgroundColor: d.primaryContainer }]}
-                        >
-                          <Text style={styles.modalPrimaryText}>Add all to session</Text>
-                        </Pressable>
+                        (() => {
+                          const programId = routineModal.draft.id;
+                          const alreadyAdded = programsAddedToSession.has(programId);
+                          return (
+                            <Pressable
+                              onPress={() => void addRoutineExercisesToSession()}
+                              disabled={alreadyAdded || addingProgramToSession}
+                              style={[
+                                styles.routinePrimaryBtn,
+                                { backgroundColor: d.primaryContainer },
+                                (alreadyAdded || addingProgramToSession) && { opacity: 0.45 },
+                              ]}
+                            >
+                              <Text style={styles.modalPrimaryText}>
+                                {addingProgramToSession
+                                  ? 'Adding…'
+                                  : alreadyAdded
+                                    ? 'Already added to session'
+                                    : 'Add all to session'}
+                              </Text>
+                            </Pressable>
+                          );
+                        })()
                       ) : (
                         <Text style={[styles.routineModalHint, { color: d.onSurfaceVariant }]}>
                           Start a workout to load this list into your log.
