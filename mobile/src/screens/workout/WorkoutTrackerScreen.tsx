@@ -82,7 +82,7 @@ type ProgramRoutineCardProps = {
   titleColor: string;
   metaColor: string;
   actionLabel: string;
-  actionIcon: keyof typeof Ionicons.glyphMap;
+  actionIcon?: keyof typeof Ionicons.glyphMap;
   actionAccentColor: string;
   actionTextColor: string;
   onActionPress: () => void;
@@ -158,8 +158,19 @@ function ProgramRoutineCard({
                 pressed && !actionDisabled && { opacity: 0.9 },
               ]}
             >
-              <Ionicons name={actionIcon} size={16} color={actionTextColor} />
-              <Text style={[styles.programActionText, { color: actionTextColor }]}>{actionLabel}</Text>
+              <View style={styles.programActionContent}>
+                {actionIcon ? (
+                  <View style={styles.programActionIconWrap}>
+                    <Ionicons name={actionIcon} size={16} color={actionTextColor} />
+                  </View>
+                ) : null}
+                <Text
+                  numberOfLines={1}
+                  style={[styles.programActionText, { color: actionTextColor }]}
+                >
+                  {actionLabel}
+                </Text>
+              </View>
             </Pressable>
           </View>
         </View>
@@ -996,26 +1007,38 @@ export function WorkoutTrackerScreen() {
                 style={styles.programsHScroll}
               >
                 {programs.map((r, index) => (
-                  <ProgramRoutineCard
-                    key={r.id}
-                    routine={r}
-                    index={index}
-                    duration={routineDurationMin(index)}
-                    dayUpper={(r.dayLabel ?? 'DAY').toUpperCase()}
-                    titleLine={r.dayLabel ? `${r.title} ${r.dayLabel}` : r.title}
-                    onPress={() => openRoutineModal(r, false)}
-                    surfaceColor={d.programCardSurface}
-                    dayColor={d.onSurfaceVariant}
-                    titleColor={d.onSurface}
-                    metaColor={d.primary}
-                    actionLabel={sessionStarted ? 'End' : 'Start'}
-                    actionIcon={sessionStarted ? 'stop' : 'play'}
-                    actionAccentColor={sessionStarted ? d.error : d.primaryContainer}
-                    actionTextColor="#fff"
-                    onActionPress={() =>
-                      sessionStarted ? requestEndWorkout() : requestStartWorkout(r)
-                    }
-                  />
+                  (() => {
+                    const loadedInSession = programsAddedToSession.has(r.id);
+                    const showEndAction = sessionStarted && loadedInSession;
+                    const actionDisabled =
+                      addingProgramToSession ||
+                      sessionConfirmBusy ||
+                      (sessionStarted && !loadedInSession);
+
+                    return (
+                      <ProgramRoutineCard
+                        key={r.id}
+                        routine={r}
+                        index={index}
+                        duration={routineDurationMin(index)}
+                        dayUpper={(r.dayLabel ?? 'DAY').toUpperCase()}
+                        titleLine={r.dayLabel ? `${r.title} ${r.dayLabel}` : r.title}
+                        onPress={() => openRoutineModal(r, false)}
+                        surfaceColor={d.programCardSurface}
+                        dayColor={d.onSurfaceVariant}
+                        titleColor={d.onSurface}
+                        metaColor={d.primary}
+                        actionLabel={showEndAction ? 'End' : 'Start'}
+                        actionIcon={showEndAction ? 'stop' : 'play'}
+                        actionAccentColor={showEndAction ? d.error : d.primaryContainer}
+                        actionTextColor="#fff"
+                        onActionPress={() =>
+                          showEndAction ? requestEndWorkout() : requestStartWorkout(r)
+                        }
+                        actionDisabled={actionDisabled}
+                      />
+                    );
+                  })()
                 ))}
               </ScrollView>
             )}
@@ -1023,28 +1046,30 @@ export function WorkoutTrackerScreen() {
 
           <View style={styles.pagePad}>
             {!sessionStarted ? (
-              <Pressable
-                onPress={() => requestStartWorkout()}
-                style={({ pressed }) => [
-                  styles.startSessionCard,
-                  {
-                    borderColor: d.outlineVariant,
-                    opacity: pressed ? 0.92 : 1,
-                  },
-                ]}
-              >
-                <View style={styles.startSessionTitleRow}>
-                  <View style={styles.startSessionIconWrap}>
-                    <Ionicons name="play-circle-outline" size={24} color={d.primary} />
+              // programs.length === 0 ? (
+                <View
+                  style={[
+                    styles.startSessionCard,
+                    {
+                      borderColor: d.outlineVariant,
+                    },
+                  ]}
+                >
+                  <View style={styles.startSessionTitleRow}>
+                    <View style={styles.startSessionIconWrap}>
+                      <Ionicons name="play-circle-outline" size={24} color={d.primary} />
+                    </View> 
+                    <Text style={[styles.startSessionTitle, { color: d.onSurface }]}>
+                      Start workout
+                    </Text>
                   </View>
-                  <Text style={[styles.startSessionTitle, { color: d.onSurface }]}>Start workout</Text>
+                  <Text style={[styles.startSessionHint, { color: d.onSurfaceVariant }]}>
+                    {programs.length > 0
+                      ? 'Click on the Start button to start your workout.'
+                      : 'Create a program above or load the sample programs, then use that card to start your workout.'}
+                  </Text>
                 </View>
-                <Text style={[styles.startSessionHint, { color: d.onSurfaceVariant }]}>
-                  {isApiMode
-                    ? 'Log sets and exercises for this session. Your active workout is saved on the server until you end it.'
-                    : 'Log sets and exercises for this session. Data stays on this device until sync ships.'}
-                </Text>
-              </Pressable>
+             
             ) : (
               <>
                 <View style={styles.activeHeader}>
@@ -1703,18 +1728,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm + 2,
     paddingVertical: spacing.sm,
     borderRadius: 999,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
   },
   programActionBtnDisabled: {
     opacity: 0.5,
+  },
+  programActionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'nowrap',
+    gap: 6,
+  },
+  programActionIconWrap: {
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   programActionText: {
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.3,
+    lineHeight: 16,
+    includeFontPadding: false,
+    flexShrink: 0,
   },
   startSessionCard: {
     flexDirection: 'column',
