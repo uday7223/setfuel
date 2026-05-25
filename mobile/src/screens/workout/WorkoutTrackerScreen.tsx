@@ -68,6 +68,7 @@ function sanitizeRoutine(r: PersonalRoutine): PersonalRoutine {
 }
 
 type RoutineModalState = { draft: PersonalRoutine; editMode: boolean };
+type SessionConfirmState = { mode: 'start' | 'end'; routine?: PersonalRoutine };
 
 type ProgramRoutineCardProps = {
   routine: PersonalRoutine;
@@ -80,6 +81,12 @@ type ProgramRoutineCardProps = {
   dayColor: string;
   titleColor: string;
   metaColor: string;
+  actionLabel: string;
+  actionIcon: keyof typeof Ionicons.glyphMap;
+  actionAccentColor: string;
+  actionTextColor: string;
+  onActionPress: () => void;
+  actionDisabled?: boolean;
 };
 
 function routineDurationMin(index: number) {
@@ -104,15 +111,16 @@ function ProgramRoutineCard({
   dayColor,
   titleColor,
   metaColor,
+  actionLabel,
+  actionIcon,
+  actionAccentColor,
+  actionTextColor,
+  onActionPress,
+  actionDisabled = false,
 }: ProgramRoutineCardProps) {
   const g = PROGRAM_CARD_GRADIENTS[index % PROGRAM_CARD_GRADIENTS.length];
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${routine.title} program`}
-      style={({ pressed }) => [styles.programCardOuter, pressed && { opacity: 0.94 }]}
-    >
+    <View style={styles.programCardOuter}>
       <View style={[styles.programCardInner, { backgroundColor: surfaceColor }]}>
         <LinearGradient
           colors={[g[0], g[1], g[2]]}
@@ -122,17 +130,41 @@ function ProgramRoutineCard({
           style={styles.programAccentStripe}
         />
         <View style={styles.programCardBody}>
-          <View style={styles.programCardTextBlock}>
-            <Text style={[styles.programDay, { color: dayColor }]}>{dayUpper}</Text>
-            <Text style={[styles.programTitle, { color: titleColor }]}>{titleLine}</Text>
-          </View>
-          <View style={styles.programMeta}>
-            <Ionicons name="time-outline" size={15} color={metaColor} />
-            <Text style={[styles.programDuration, { color: metaColor }]}>{duration} min</Text>
+          <Pressable
+            onPress={onPress}
+            accessibilityRole="button"
+            accessibilityLabel={`${routine.title} program`}
+            style={({ pressed }) => [styles.programCardTapArea, pressed && { opacity: 0.94 }]}
+          >
+            <View style={styles.programCardTextBlock}>
+              <Text style={[styles.programDay, { color: dayColor }]}>{dayUpper}</Text>
+              <Text style={[styles.programTitle, { color: titleColor }]}>{titleLine}</Text>
+            </View>
+          </Pressable>
+          <View style={styles.programCardFooter}>
+            <View style={styles.programMeta}>
+              <Ionicons name="time-outline" size={15} color={metaColor} />
+              <Text style={[styles.programDuration, { color: metaColor }]}>{duration} min</Text>
+            </View>
+            <Pressable
+              onPress={onActionPress}
+              disabled={actionDisabled}
+              accessibilityRole="button"
+              accessibilityLabel={`${actionLabel} ${routine.title}`}
+              style={({ pressed }) => [
+                styles.programActionBtn,
+                { backgroundColor: actionAccentColor },
+                actionDisabled && styles.programActionBtnDisabled,
+                pressed && !actionDisabled && { opacity: 0.9 },
+              ]}
+            >
+              <Ionicons name={actionIcon} size={16} color={actionTextColor} />
+              <Text style={[styles.programActionText, { color: actionTextColor }]}>{actionLabel}</Text>
+            </Pressable>
           </View>
         </View>
       </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -169,6 +201,8 @@ export function WorkoutTrackerScreen() {
   const [exerciseModalOpen, setExerciseModalOpen] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState('');
   const [routineModal, setRoutineModal] = useState<RoutineModalState | null>(null);
+  const [sessionConfirm, setSessionConfirm] = useState<SessionConfirmState | null>(null);
+  const [sessionConfirmBusy, setSessionConfirmBusy] = useState(false);
   /** Program IDs already bulk-added to the current active session (reset on start/end). */
   const [programsAddedToSession, setProgramsAddedToSession] = useState<Set<string>>(() => new Set());
   const [addingProgramToSession, setAddingProgramToSession] = useState(false);
@@ -305,12 +339,13 @@ export function WorkoutTrackerScreen() {
     setAddingProgramToSession(false);
   }, []);
 
-  const startWorkout = useCallback(async () => {
+  const startWorkout = useCallback(async (): Promise<boolean> => {
     if (isApiMode) {
       try {
         await workoutService.startSession();
         setSessionStarted(true);
         resetProgramSessionState();
+        return true;
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Could not start session';
         if (Platform.OS === 'web') {
@@ -318,14 +353,15 @@ export function WorkoutTrackerScreen() {
         } else {
           Alert.alert('Could not start workout', msg);
         }
+        return false;
       }
-      return;
     }
     setSessionStarted(true);
     resetProgramSessionState();
+    return true;
   }, [isApiMode, resetProgramSessionState]);
 
-  const endWorkoutSession = useCallback(async () => {
+  const endWorkoutSession = useCallback(async (): Promise<boolean> => {
     if (isApiMode) {
       try {
         await workoutService.endSession();
@@ -335,7 +371,128 @@ export function WorkoutTrackerScreen() {
     }
     setSessionStarted(false);
     resetProgramSessionState();
+    return true;
   }, [isApiMode, resetProgramSessionState]);
+
+  const requestStartWorkout = useCallback(
+    (routine?: PersonalRoutine) => {
+      if (routine && flattenRoutineItems(routine).every((name) => !name.trim())) {
+        const msg = 'This program has no exercises yet. Add at least one exercise before starting it.';
+        if (Platform.OS === 'web') globalThis.alert?.(msg);
+        else Alert.alert('Program is empty', msg);
+        return;
+      }
+      setSessionConfirm({ mode: 'start', ...(routine ? { routine } : {}) });
+    },
+    [],
+  );
+
+  const requestEndWorkout = useCallback(() => {
+    setSessionConfirm({ mode: 'end' });
+  }, []);
+
+  const loadRoutineIntoActiveSession = useCallback(
+    async (routine: PersonalRoutine): Promise<boolean> => {
+      if (addingProgramToSessionRef.current) return false;
+
+      addingProgramToSessionRef.current = true;
+      setAddingProgramToSession(true);
+
+      try {
+        const programId = routine.id;
+        if (programsAddedToSessionRef.current.has(programId)) {
+          return true;
+        }
+
+        const existingNames = new Set(
+          exercisesRef.current.map((e) => e.name.trim().toLowerCase()).filter(Boolean),
+        );
+        const names = flattenRoutineItems(routine).filter((n) => {
+          const key = n.trim().toLowerCase();
+          if (!key || existingNames.has(key)) return false;
+          existingNames.add(key);
+          return true;
+        });
+
+        if (names.length === 0) {
+          const msg =
+            'This program has no new exercises to load into the workout. Add exercises to the program first.';
+          if (Platform.OS === 'web') globalThis.alert?.(msg);
+          else Alert.alert('Nothing to load', msg);
+          return false;
+        }
+
+        if (isApiMode) {
+          const added: ExerciseEntry[] = [];
+          for (const name of names) {
+            added.push(await workoutService.addExercise(name));
+          }
+          setExercises((prev) => {
+            const next = [...prev, ...added];
+            exercisesRef.current = next;
+            return next;
+          });
+        } else {
+          setExercises((prev) => {
+            const next = [
+              ...prev,
+              ...names.map((name) => ({
+                id: localId(),
+                name,
+                sets: [{ id: localId(), reps: '10', weightKg: '', done: false }],
+              })),
+            ];
+            exercisesRef.current = next;
+            return next;
+          });
+        }
+
+        const nextProgramsAddedToSession = new Set(programsAddedToSessionRef.current);
+        nextProgramsAddedToSession.add(programId);
+        programsAddedToSessionRef.current = nextProgramsAddedToSession;
+        setProgramsAddedToSession(nextProgramsAddedToSession);
+        return true;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Could not load program exercises';
+        if (Platform.OS === 'web') globalThis.alert?.(msg);
+        else Alert.alert('Load program', msg);
+        return false;
+      } finally {
+        addingProgramToSessionRef.current = false;
+        setAddingProgramToSession(false);
+      }
+    },
+    [isApiMode],
+  );
+
+  const handleConfirmSessionAction = useCallback(async () => {
+    if (!sessionConfirm || sessionConfirmBusy) return;
+    setSessionConfirmBusy(true);
+    try {
+      if (sessionConfirm.mode === 'start') {
+        const started = await startWorkout();
+        if (!started) return;
+        if (sessionConfirm.routine) {
+          await loadRoutineIntoActiveSession(sessionConfirm.routine);
+        }
+        setSessionConfirm(null);
+        return;
+      }
+
+      const ended = await endWorkoutSession();
+      if (ended) {
+        setSessionConfirm(null);
+      }
+    } finally {
+      setSessionConfirmBusy(false);
+    }
+  }, [
+    endWorkoutSession,
+    loadRoutineIntoActiveSession,
+    sessionConfirm,
+    sessionConfirmBusy,
+    startWorkout,
+  ]);
 
   const openAddExercise = useCallback(() => {
     setNewExerciseName('');
@@ -503,88 +660,6 @@ export function WorkoutTrackerScreen() {
     },
     [isApiMode],
   );
-
-  const addRoutineExercisesToSession = useCallback(async () => {
-    if (!routineModal || !sessionStarted || addingProgramToSessionRef.current) return;
-
-    addingProgramToSessionRef.current = true;
-    setAddingProgramToSession(true);
-
-    try {
-      const programId = routineModal.draft.id;
-      if (programsAddedToSessionRef.current.has(programId)) {
-        if (Platform.OS === 'web') {
-          globalThis.alert?.('This program was already added to your current workout.');
-        } else {
-          Alert.alert('Already added', 'This program was already added to your current workout.');
-        }
-        return;
-      }
-
-      const existingNames = new Set(
-        exercisesRef.current.map((e) => e.name.trim().toLowerCase()).filter(Boolean),
-      );
-      const names = flattenRoutineItems(routineModal.draft).filter((n) => {
-        const key = n.trim().toLowerCase();
-        if (!key || existingNames.has(key)) return false;
-        existingNames.add(key);
-        return true;
-      });
-
-      if (names.length === 0) {
-        if (Platform.OS === 'web') {
-          globalThis.alert?.('No new exercises to add (empty program or all names already in session).');
-        } else {
-          Alert.alert(
-            'Nothing to add',
-            'No new exercises to add — the program is empty or every exercise is already in your session.',
-          );
-        }
-        return;
-      }
-
-      if (isApiMode) {
-        const added: ExerciseEntry[] = [];
-        for (const name of names) {
-          added.push(await workoutService.addExercise(name));
-        }
-        setExercises((prev) => {
-          const next = [...prev, ...added];
-          exercisesRef.current = next;
-          return next;
-        });
-      } else {
-        setExercises((prev) => {
-          const next = [
-            ...prev,
-            ...names.map((name) => ({
-              id: localId(),
-              name,
-              sets: [{ id: localId(), reps: '10', weightKg: '', done: false }],
-            })),
-          ];
-          exercisesRef.current = next;
-          return next;
-        });
-      }
-      const nextProgramsAddedToSession = new Set(programsAddedToSessionRef.current);
-      nextProgramsAddedToSession.add(programId);
-      programsAddedToSessionRef.current = nextProgramsAddedToSession;
-      setProgramsAddedToSession(nextProgramsAddedToSession);
-      setRoutineModal(null);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Could not add exercises';
-      if (Platform.OS === 'web') globalThis.alert?.(msg);
-      else Alert.alert('Add to session', msg);
-    } finally {
-      addingProgramToSessionRef.current = false;
-      setAddingProgramToSession(false);
-    }
-  }, [
-    routineModal,
-    sessionStarted,
-    isApiMode,
-  ]);
 
   const openRoutineModal = useCallback((r: PersonalRoutine, editMode = false) => {
     setRoutineModal({ draft: cloneRoutine(r), editMode });
@@ -933,6 +1008,13 @@ export function WorkoutTrackerScreen() {
                     dayColor={d.onSurfaceVariant}
                     titleColor={d.onSurface}
                     metaColor={d.primary}
+                    actionLabel={sessionStarted ? 'End' : 'Start'}
+                    actionIcon={sessionStarted ? 'stop' : 'play'}
+                    actionAccentColor={sessionStarted ? d.error : d.primaryContainer}
+                    actionTextColor="#fff"
+                    onActionPress={() =>
+                      sessionStarted ? requestEndWorkout() : requestStartWorkout(r)
+                    }
                   />
                 ))}
               </ScrollView>
@@ -942,7 +1024,7 @@ export function WorkoutTrackerScreen() {
           <View style={styles.pagePad}>
             {!sessionStarted ? (
               <Pressable
-                onPress={() => void startWorkout()}
+                onPress={() => requestStartWorkout()}
                 style={({ pressed }) => [
                   styles.startSessionCard,
                   {
@@ -971,7 +1053,7 @@ export function WorkoutTrackerScreen() {
                     <Text style={[styles.activeTitle, { color: d.onSurface }]}>Active session</Text>
                   </View>
                   <Pressable
-                    onPress={() => void endWorkoutSession()}
+                    onPress={requestEndWorkout}
                     style={[styles.endSessionBtn, { backgroundColor: d.error }]}
                   >
                     <Text style={[styles.endSessionLabel, { color: d.onError }]}>END SESSION</Text>
@@ -1112,6 +1194,73 @@ export function WorkoutTrackerScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={!!sessionConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!sessionConfirmBusy) setSessionConfirm(null);
+        }}
+      >
+        <Pressable
+          style={[styles.modalBackdrop, { backgroundColor: 'rgba(10,14,26,0.72)' }]}
+          onPress={() => {
+            if (!sessionConfirmBusy) setSessionConfirm(null);
+          }}
+        >
+          <Pressable
+            style={[styles.modalCard, { backgroundColor: d.surfaceContainerLowest }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={[styles.modalTitle, { color: d.onSurface }]}>
+              {sessionConfirm?.mode === 'start' ? 'Start workout?' : 'End workout?'}
+            </Text>
+            <Text style={[styles.sessionConfirmBody, { color: d.onSurfaceVariant }]}>
+              {sessionConfirm?.mode === 'start'
+                ? sessionConfirm.routine
+                  ? `Start a workout from ${sessionConfirm.routine.title}? Its exercises will be loaded into the active session automatically.`
+                  : 'Start a new workout session now?'
+                : 'End your current workout session now? You can start another one any time.'}
+            </Text>
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setSessionConfirm(null)}
+                disabled={sessionConfirmBusy}
+                style={[
+                  styles.modalGhostBtn,
+                  { borderColor: d.outlineGhost15 },
+                  sessionConfirmBusy && styles.modalActionDisabled,
+                ]}
+              >
+                <Text style={[styles.modalGhostText, { color: d.primary }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void handleConfirmSessionAction()}
+                disabled={sessionConfirmBusy}
+                style={[
+                  styles.modalPrimaryBtn,
+                  {
+                    backgroundColor:
+                      sessionConfirm?.mode === 'start' ? d.primaryContainer : d.error,
+                  },
+                  sessionConfirmBusy && styles.modalActionDisabled,
+                ]}
+              >
+                <Text style={styles.modalPrimaryText}>
+                  {sessionConfirmBusy
+                    ? sessionConfirm?.mode === 'start'
+                      ? 'Starting...'
+                      : 'Ending...'
+                    : sessionConfirm?.mode === 'start'
+                      ? 'Start'
+                      : 'End'}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={exerciseModalOpen}
@@ -1386,32 +1535,14 @@ export function WorkoutTrackerScreen() {
                   ) : (
                     <>
                       {sessionStarted ? (
-                        (() => {
-                          const programId = routineModal.draft.id;
-                          const alreadyAdded = programsAddedToSession.has(programId);
-                          return (
-                            <Pressable
-                              onPress={() => void addRoutineExercisesToSession()}
-                              disabled={alreadyAdded || addingProgramToSession}
-                              style={[
-                                styles.routinePrimaryBtn,
-                                { backgroundColor: d.primaryContainer },
-                                (alreadyAdded || addingProgramToSession) && { opacity: 0.45 },
-                              ]}
-                            >
-                              <Text style={styles.modalPrimaryText}>
-                                {addingProgramToSession
-                                  ? 'Adding…'
-                                  : alreadyAdded
-                                    ? 'Already added to session'
-                                    : 'Add all to session'}
-                              </Text>
-                            </Pressable>
-                          );
-                        })()
+                        <Text style={[styles.routineModalHint, { color: d.onSurfaceVariant }]}>
+                          {programsAddedToSession.has(routineModal.draft.id)
+                            ? 'This program already loaded the exercises in your current workout.'
+                            : 'Programs load automatically when you tap Start on their card before beginning a workout.'}
+                        </Text>
                       ) : (
                         <Text style={[styles.routineModalHint, { color: d.onSurfaceVariant }]}>
-                          Start a workout to load this list into your log.
+                          Tap Start on this program card to begin a workout with these exercises already loaded.
                         </Text>
                       )}
                       <Pressable
@@ -1532,6 +1663,10 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.lg + 10,
     justifyContent: 'space-between',
   },
+  programCardTapArea: {
+    flexGrow: 1,
+    justifyContent: 'flex-start',
+  },
   programCardTextBlock: {
     flexShrink: 1,
   },
@@ -1552,10 +1687,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
+  programCardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   programDuration: {
     fontSize: 13,
     fontWeight: '600',
     letterSpacing: 0.2,
+  },
+  programActionBtn: {
+    minWidth: 86,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.sm,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  programActionBtnDisabled: {
+    opacity: 0.5,
+  },
+  programActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   startSessionCard: {
     flexDirection: 'column',
@@ -1790,6 +1949,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: spacing.md,
   },
+  sessionConfirmBody: {
+    fontSize: 14,
+    lineHeight: 21,
+  },
   inputLabel: {
     fontSize: 12,
     fontWeight: '700',
@@ -1829,6 +1992,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  modalActionDisabled: {
+    opacity: 0.65,
   },
   routineModalShell: {
     borderRadius: 24,
