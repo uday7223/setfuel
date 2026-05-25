@@ -1,11 +1,12 @@
 import type { DayHistoryDetail, HistoryCalendarResponse, WorkoutSessionWithStats } from '../types';
+import { appendClientTimeZone } from '../lib/clientTimeZone';
 import { apiFetch, USE_LOCAL } from './api';
 
 export async function getCalendar(from: string, to: string): Promise<HistoryCalendarResponse> {
   if (USE_LOCAL) {
     return { from, to, days: [] };
   }
-  const q = new URLSearchParams({ from, to });
+  const q = appendClientTimeZone(new URLSearchParams({ from, to }));
   return apiFetch<HistoryCalendarResponse>(`/history/calendar?${q}`);
 }
 
@@ -24,13 +25,13 @@ export async function getDayDetail(date: string): Promise<DayHistoryDetail> {
       },
     };
   }
-  const q = new URLSearchParams({ date });
+  const q = appendClientTimeZone(new URLSearchParams({ date }));
   return apiFetch<DayHistoryDetail>(`/history/day?${q}`);
 }
 
 export async function listSessions(from: string, to: string): Promise<WorkoutSessionWithStats[]> {
   if (USE_LOCAL) return [];
-  const q = new URLSearchParams({ from, to });
+  const q = appendClientTimeZone(new URLSearchParams({ from, to }));
   return apiFetch<WorkoutSessionWithStats[]>(`/sessions?${q}`);
 }
 

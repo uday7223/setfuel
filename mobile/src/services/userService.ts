@@ -6,6 +6,7 @@
  */
 
 import type { DashboardSummary, UserProfile } from '../types';
+import { appendClientTimeZone } from '../lib/clientTimeZone';
 import { apiFetch, USE_LOCAL } from './api';
 
 const PLACEHOLDER_AVATAR =
@@ -32,7 +33,8 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       nutritionProgress: 0.72,
     };
   }
-  return apiFetch<DashboardSummary>('/user/dashboard-summary');
+  const q = appendClientTimeZone(new URLSearchParams());
+  return apiFetch<DashboardSummary>(`/user/dashboard-summary?${q}`);
 }
 
 export { PLACEHOLDER_AVATAR };

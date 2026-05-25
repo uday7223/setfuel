@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { getPool } from '../../db/pool.js';
+import { getClientTimeZone, getClientTimeZoneParam, getLocalDateExpr } from '../../lib/clientTimeZone.js';
 import { logger } from '../../lib/logger.js';
 import { computeSessionStats, parseExercises, type ExerciseEntry } from '../../lib/workoutStats.js';
 import { mapSession } from './sessionMappers.js';
@@ -25,6 +26,8 @@ sessionsRouter.get('/', async (req, res) => {
   log.debug({ userId, from, to }, 'Listing workout sessions');
   try {
     const pool = getPool()!;
+    const timeZone = getClientTimeZone(req);
+    const workoutDayExpr = getLocalDateExpr('ended_at', timeZone, 4);
     const r = await pool.query<{
       id: string;
       started_at: Date;
@@ -35,9 +38,9 @@ sessionsRouter.get('/', async (req, res) => {
        FROM workout_session
        WHERE user_id = $1
          AND ended_at IS NOT NULL
-         AND (ended_at AT TIME ZONE 'UTC')::date BETWEEN $2::date AND $3::date
+         AND ${workoutDayExpr} BETWEEN $2::date AND $3::date
        ORDER BY ended_at DESC`,
-      [userId, from, to],
+      [userId, from, to, getClientTimeZoneParam(timeZone)],
     );
 
     const list = r.rows.map((row) => {

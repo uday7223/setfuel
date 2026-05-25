@@ -7,6 +7,7 @@
  */
 
 import type { CreateMealPayload, DailySummary, Macros, Meal } from '../types';
+import { appendClientTimeZone } from '../lib/clientTimeZone';
 import { apiFetch, localId, USE_LOCAL } from './api';
 
 const DAILY_GOAL_KCAL = 2500;
@@ -107,7 +108,8 @@ export async function getDailySummary(): Promise<DailySummary> {
       mealsLogged: _localMeals.length,
     };
   }
-  return apiFetch<DailySummary>('/meals/daily-summary');
+  const q = appendClientTimeZone(new URLSearchParams());
+  return apiFetch<DailySummary>(`/meals/daily-summary?${q}`);
 }
 
 export { DAILY_GOAL_KCAL, resetLocalMeals };

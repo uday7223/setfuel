@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
+import { getClientTimeZone, getClientTimeZoneParam, getLocalDateExpr } from '../../lib/clientTimeZone.js';
 import { getPool } from '../../db/pool.js';
 import { logger } from '../../lib/logger.js';
 import { formatMealTime } from '../../lib/mealDisplay.js';
@@ -8,11 +9,14 @@ export const mealsRouter = Router();
 
 const log = logger.child({ module: 'meals' });
 
-mealsRouter.get('/daily-summary', async (_req, res) => {
+mealsRouter.get('/daily-summary', async (req, res) => {
   const { userId } = res.locals;
   log.debug({ userId }, 'Fetching daily meal summary');
   try {
     const pool = getPool()!;
+    const timeZone = getClientTimeZone(req);
+    const mealDayExpr = getLocalDateExpr('created_at', timeZone, 2);
+    const todayExpr = getLocalDateExpr('now()', timeZone, 2);
 
     const u = await pool.query<{ goal_kcal: number }>(
       'SELECT goal_kcal FROM app_user WHERE id = $1',
@@ -29,8 +33,8 @@ mealsRouter.get('/daily-summary', async (_req, res) => {
          COALESCE(SUM(fats), 0)::text AS f
        FROM meal
        WHERE user_id = $1
-         AND (created_at AT TIME ZONE 'UTC')::date = (now() AT TIME ZONE 'UTC')::date`,
-      [userId],
+         AND ${mealDayExpr} = ${todayExpr}`,
+      [userId, getClientTimeZoneParam(timeZone)],
     );
     const row = r.rows[0];
     const totalKcal = Number(row?.total ?? 0);

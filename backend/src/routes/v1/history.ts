@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getPool } from '../../db/pool.js';
+import { getClientTimeZone, getClientTimeZoneParam, getLocalDateExpr } from '../../lib/clientTimeZone.js';
 import { logger } from '../../lib/logger.js';
 import { computeSessionStats, parseExercises } from '../../lib/workoutStats.js';
 import { mapSession } from './sessionMappers.js';
@@ -29,26 +30,30 @@ historyRouter.get('/calendar', async (req, res) => {
   log.debug({ userId, from, to }, 'Fetching history calendar');
   try {
     const pool = getPool()!;
+    const timeZone = getClientTimeZone(req);
+    const workoutDayExpr = getLocalDateExpr('COALESCE(ended_at, started_at)', timeZone, 4);
+    const workoutFilterDayExpr = getLocalDateExpr('ended_at', timeZone, 4);
+    const mealDayExpr = getLocalDateExpr('created_at', timeZone, 4);
 
     const workouts = await pool.query<{ day: string; count: string }>(
-      `SELECT (COALESCE(ended_at, started_at) AT TIME ZONE 'UTC')::date::text AS day,
+      `SELECT ${workoutDayExpr}::text AS day,
               COUNT(*)::text AS count
        FROM workout_session
        WHERE user_id = $1
          AND ended_at IS NOT NULL
-         AND (ended_at AT TIME ZONE 'UTC')::date BETWEEN $2::date AND $3::date
+         AND ${workoutFilterDayExpr} BETWEEN $2::date AND $3::date
        GROUP BY day`,
-      [userId, from, to],
+      [userId, from, to, getClientTimeZoneParam(timeZone)],
     );
 
     const meals = await pool.query<{ day: string; count: string }>(
-      `SELECT (created_at AT TIME ZONE 'UTC')::date::text AS day,
+      `SELECT ${mealDayExpr}::text AS day,
               COUNT(*)::text AS count
        FROM meal
        WHERE user_id = $1
-         AND (created_at AT TIME ZONE 'UTC')::date BETWEEN $2::date AND $3::date
+         AND ${mealDayExpr} BETWEEN $2::date AND $3::date
        GROUP BY day`,
-      [userId, from, to],
+      [userId, from, to, getClientTimeZoneParam(timeZone)],
     );
 
     const dayMap = new Map<
@@ -103,6 +108,9 @@ historyRouter.get('/day', async (req, res) => {
   log.debug({ userId, date }, 'Fetching history day detail');
   try {
     const pool = getPool()!;
+    const timeZone = getClientTimeZone(req);
+    const workoutDayExpr = getLocalDateExpr('ended_at', timeZone, 3);
+    const mealDayExpr = getLocalDateExpr('created_at', timeZone, 3);
 
     const sessionsR = await pool.query<{
       id: string;
@@ -114,9 +122,9 @@ historyRouter.get('/day', async (req, res) => {
        FROM workout_session
        WHERE user_id = $1
          AND ended_at IS NOT NULL
-         AND (ended_at AT TIME ZONE 'UTC')::date = $2::date
+         AND ${workoutDayExpr} = $2::date
        ORDER BY ended_at DESC`,
-      [userId, date],
+      [userId, date, getClientTimeZoneParam(timeZone)],
     );
 
     const mealsR = await pool.query<{
@@ -133,9 +141,9 @@ historyRouter.get('/day', async (req, res) => {
       `SELECT id, name, kcal, time_display, created_at, image_uri, protein, carbs, fats
        FROM meal
        WHERE user_id = $1
-         AND (created_at AT TIME ZONE 'UTC')::date = $2::date
+         AND ${mealDayExpr} = $2::date
        ORDER BY created_at ASC`,
-      [userId, date],
+      [userId, date, getClientTimeZoneParam(timeZone)],
     );
 
     const u = await pool.query<{ goal_kcal: number }>(
