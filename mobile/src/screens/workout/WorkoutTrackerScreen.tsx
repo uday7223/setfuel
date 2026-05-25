@@ -67,8 +67,44 @@ function sanitizeRoutine(r: PersonalRoutine): PersonalRoutine {
   };
 }
 
+function getSingleLoadedProgramId(programIds: Set<string>): string | null {
+  if (programIds.size !== 1) return null;
+  const first = programIds.values().next();
+  return first.done ? null : first.value;
+}
+
+function appendExerciseToRoutine(routine: PersonalRoutine, name: string): PersonalRoutine {
+  const trimmedName = name.trim();
+  if (!trimmedName) return routine;
+
+  const blocks =
+    routine.blocks.length > 0 ? routine.blocks : [{ heading: 'Exercises', items: [''] }];
+
+  let targetBlockIndex = -1;
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    if (blocks[i]?.items.some((item) => item.trim().length > 0)) {
+      targetBlockIndex = i;
+      break;
+    }
+  }
+  if (targetBlockIndex < 0) targetBlockIndex = Math.max(0, blocks.length - 1);
+
+  return {
+    ...routine,
+    blocks: blocks.map((block, index) => {
+      if (index !== targetBlockIndex) return block;
+      const nextItems =
+        block.items.length === 1 && !block.items[0]?.trim()
+          ? [trimmedName]
+          : [...block.items, trimmedName];
+      return { ...block, items: nextItems };
+    }),
+  };
+}
+
 type RoutineModalState = { draft: PersonalRoutine; editMode: boolean };
 type SessionConfirmState = { mode: 'start' | 'end'; routine?: PersonalRoutine };
+type LoadRoutineOptions = { quietIfNoNewExercises?: boolean };
 
 type ProgramRoutineCardProps = {
   routine: PersonalRoutine;
@@ -222,6 +258,7 @@ export function WorkoutTrackerScreen() {
   const [programsError, setProgramsError] = useState<string | null>(null);
   const [programsReloadKey, setProgramsReloadKey] = useState(0);
   const exercisesRef = useRef<ExerciseEntry[]>([]);
+  const programsRef = useRef<PersonalRoutine[]>([]);
   const programsAddedToSessionRef = useRef<Set<string>>(new Set());
   const addingProgramToSessionRef = useRef(false);
   const apiDebounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -241,6 +278,10 @@ export function WorkoutTrackerScreen() {
   useEffect(() => {
     exercisesRef.current = exercises;
   }, [exercises]);
+
+  useEffect(() => {
+    programsRef.current = programs;
+  }, [programs]);
 
   useEffect(() => {
     programsAddedToSessionRef.current = programsAddedToSession;
@@ -403,7 +444,7 @@ export function WorkoutTrackerScreen() {
   }, []);
 
   const loadRoutineIntoActiveSession = useCallback(
-    async (routine: PersonalRoutine): Promise<boolean> => {
+    async (routine: PersonalRoutine, options?: LoadRoutineOptions): Promise<boolean> => {
       if (addingProgramToSessionRef.current) return false;
 
       addingProgramToSessionRef.current = true;
@@ -411,10 +452,6 @@ export function WorkoutTrackerScreen() {
 
       try {
         const programId = routine.id;
-        if (programsAddedToSessionRef.current.has(programId)) {
-          return true;
-        }
-
         const existingNames = new Set(
           exercisesRef.current.map((e) => e.name.trim().toLowerCase()).filter(Boolean),
         );
@@ -426,10 +463,12 @@ export function WorkoutTrackerScreen() {
         });
 
         if (names.length === 0) {
-          const msg =
-            'This program has no new exercises to load into the workout. Add exercises to the program first.';
-          if (Platform.OS === 'web') globalThis.alert?.(msg);
-          else Alert.alert('Nothing to load', msg);
+          if (!options?.quietIfNoNewExercises) {
+            const msg =
+              'This program has no new exercises to load into the workout. Add exercises to the program first.';
+            if (Platform.OS === 'web') globalThis.alert?.(msg);
+            else Alert.alert('Nothing to load', msg);
+          }
           return false;
         }
 
@@ -476,6 +515,69 @@ export function WorkoutTrackerScreen() {
     [isApiMode],
   );
 
+  const syncManualExerciseToLoadedProgram = useCallback(
+    async (name: string) => {
+      if (!sessionStarted) return;
+
+      const loadedProgramId = getSingleLoadedProgramId(programsAddedToSessionRef.current);
+      if (!loadedProgramId) return;
+
+      const previousPrograms = programsRef.current;
+      const currentProgram = previousPrograms.find((program) => program.id === loadedProgramId);
+      if (!currentProgram) return;
+
+      const updatedProgram = appendExerciseToRoutine(currentProgram, name);
+      const nextPrograms = previousPrograms.map((program) =>
+        program.id === loadedProgramId ? updatedProgram : program,
+      );
+
+      programsRef.current = nextPrograms;
+      setPrograms(nextPrograms);
+      setRoutineModal((modal) =>
+        modal && modal.draft.id === loadedProgramId
+          ? { ...modal, draft: appendExerciseToRoutine(modal.draft, name) }
+          : modal,
+      );
+
+      try {
+        if (isApiMode) {
+          const saved = await workoutService.updateProgram(updatedProgram.id, {
+            title: updatedProgram.title,
+            dayLabel: updatedProgram.dayLabel,
+            blocks: updatedProgram.blocks,
+          });
+          const savedPrograms = nextPrograms.map((program) =>
+            program.id === saved.id ? saved : program,
+          );
+          programsRef.current = savedPrograms;
+          setPrograms(savedPrograms);
+          setRoutineModal((modal) =>
+            modal && modal.draft.id === saved.id ? { ...modal, draft: cloneRoutine(saved) } : modal,
+          );
+          return;
+        }
+
+        await saveRoutines(nextPrograms);
+      } catch (e) {
+        programsRef.current = previousPrograms;
+        setPrograms(previousPrograms);
+        setRoutineModal((modal) => {
+          if (!modal || modal.draft.id !== loadedProgramId) return modal;
+          const previousProgram = previousPrograms.find((program) => program.id === loadedProgramId);
+          return previousProgram ? { ...modal, draft: cloneRoutine(previousProgram) } : modal;
+        });
+
+        const msg = e instanceof Error ? e.message : 'Could not update the current program';
+        if (Platform.OS === 'web') {
+          globalThis.alert?.(`Exercise added to workout, but not to the program.\n\n${msg}`);
+        } else {
+          Alert.alert('Program update', `Exercise added to workout, but not to the program.\n\n${msg}`);
+        }
+      }
+    },
+    [isApiMode, sessionStarted],
+  );
+
   const handleConfirmSessionAction = useCallback(async () => {
     if (!sessionConfirm || sessionConfirmBusy) return;
     setSessionConfirmBusy(true);
@@ -515,8 +617,13 @@ export function WorkoutTrackerScreen() {
     if (isApiMode) {
       try {
         const ex = await workoutService.addExercise(name);
-        setExercises((prev) => [...prev, ex]);
+        setExercises((prev) => {
+          const next = [...prev, ex];
+          exercisesRef.current = next;
+          return next;
+        });
         setExerciseModalOpen(false);
+        await syncManualExerciseToLoadedProgram(ex.name);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Could not add exercise';
         if (Platform.OS === 'web') {
@@ -527,16 +634,21 @@ export function WorkoutTrackerScreen() {
       }
       return;
     }
-    setExercises((prev) => [
-      ...prev,
-      {
-        id: localId(),
-        name,
-        sets: [{ id: localId(), reps: '10', weightKg: '', done: false }],
-      },
-    ]);
+    setExercises((prev) => {
+      const next = [
+        ...prev,
+        {
+          id: localId(),
+          name,
+          sets: [{ id: localId(), reps: '10', weightKg: '', done: false }],
+        },
+      ];
+      exercisesRef.current = next;
+      return next;
+    });
     setExerciseModalOpen(false);
-  }, [newExerciseName, isApiMode]);
+    await syncManualExerciseToLoadedProgram(name);
+  }, [isApiMode, newExerciseName, syncManualExerciseToLoadedProgram]);
 
   const updateExerciseName = useCallback(
     (exerciseId: string, name: string) => {
@@ -800,6 +912,8 @@ export function WorkoutTrackerScreen() {
   const saveProgramEdits = useCallback(async () => {
     if (!routineModal?.editMode) return;
     const cleaned = sanitizeRoutine(routineModal.draft);
+    const shouldSyncActiveSession =
+      sessionStarted && programsAddedToSessionRef.current.has(cleaned.id);
     if (isApiMode) {
       try {
         const updated = await workoutService.updateProgram(cleaned.id, {
@@ -809,6 +923,9 @@ export function WorkoutTrackerScreen() {
         });
         setPrograms((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
         setRoutineModal({ draft: cloneRoutine(updated), editMode: false });
+        if (shouldSyncActiveSession) {
+          await loadRoutineIntoActiveSession(updated, { quietIfNoNewExercises: true });
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Could not save program';
         if (Platform.OS === 'web') globalThis.alert?.(msg);
@@ -821,7 +938,10 @@ export function WorkoutTrackerScreen() {
     setPrograms(next);
     await saveRoutines(next);
     setRoutineModal({ draft: cleaned, editMode: false });
-  }, [routineModal, programs, isApiMode]);
+    if (shouldSyncActiveSession) {
+      await loadRoutineIntoActiveSession(cleaned, { quietIfNoNewExercises: true });
+    }
+  }, [routineModal, programs, isApiMode, loadRoutineIntoActiveSession, sessionStarted]);
 
   const cancelProgramEdit = useCallback(() => {
     setRoutineModal((m) => {
