@@ -157,7 +157,7 @@ export function HistoryCalendarScreen() {
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Text style={[styles.title, { color: d.onSurface }]}>History</Text>
         <Text style={[styles.subtitle, { color: d.secondary }]}>
-          Tap a day for workouts & meals
+          Tap a logged day for workouts & meals
         </Text>
       </View>
 
@@ -231,6 +231,7 @@ export function HistoryCalendarScreen() {
                 const isToday = dateStr === toLocalDateString(today);
                 const hasWorkout = info?.hasWorkout ?? false;
                 const hasMeals = info?.hasMeals ?? false;
+                const hasHistory = hasWorkout || hasMeals;
 
                 return (
                   <Pressable
@@ -238,16 +239,18 @@ export function HistoryCalendarScreen() {
                     style={[
                       styles.dayCell,
                       isToday && { borderColor: d.primary, borderWidth: 1 },
-                      (hasWorkout || hasMeals) && { backgroundColor: d.card },
+                      hasHistory && { backgroundColor: d.card },
                     ]}
-                    onPress={() => openDay(dateStr)}
+                    onPress={hasHistory ? () => openDay(dateStr) : undefined}
+                    disabled={!hasHistory}
                     accessibilityRole="button"
-                    accessibilityLabel={`${dateStr}${hasWorkout ? ', workout' : ''}${hasMeals ? ', meals' : ''}`}
+                    accessibilityState={{ disabled: !hasHistory }}
+                    accessibilityLabel={`${dateStr}${hasWorkout ? ', workout' : ''}${hasMeals ? ', meals' : ''}${!hasHistory ? ', no history logged' : ''}`}
                   >
                     <Text
                       style={[
                         styles.dayNum,
-                        { color: hasWorkout || hasMeals ? d.onSurface : d.onSurfaceVariant },
+                        { color: hasHistory ? d.onSurface : d.onSurfaceVariant },
                         isToday && { color: d.primary, fontWeight: '800' },
                       ]}
                     >
