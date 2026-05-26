@@ -1478,48 +1478,45 @@ export function WorkoutTrackerScreen() {
                     <Text style={[styles.routineModalTitle, { color: d.onSurface, flex: 1 }]}>
                       {routineModal.editMode ? 'Edit program' : routineModal.draft.title}
                     </Text>
-                    {!routineModal.editMode ? (
+                    {routineModal.editMode ? (
+                      <Pressable
+                        onPress={cancelProgramEdit}
+                        hitSlop={10}
+                        accessibilityRole="button"
+                        accessibilityLabel="Close program editor"
+                        style={({ pressed }) => [
+                          styles.routineEditIconBtn,
+                          { backgroundColor: d.surfaceContainerHigh },
+                          pressed && { opacity: 0.7 },
+                        ]}
+                      >
+                        <Ionicons name="close-outline" size={22} color={d.onSurfaceVariant} />
+                      </Pressable>
+                    ) : (
                       <Pressable
                         onPress={() => setRoutineModal((m) => (m ? { ...m, editMode: true } : null))}
                         hitSlop={10}
                         accessibilityRole="button"
                         accessibilityLabel="Edit program"
-                        style={({ pressed }) => [styles.routineEditIconBtn, pressed && { opacity: 0.7 }]}
+                        style={({ pressed }) => [
+                          styles.routineEditIconBtn,
+                          { backgroundColor: d.surfaceContainerHigh },
+                          pressed && { opacity: 0.7 },
+                        ]}
                       >
                         <Ionicons name="create-outline" size={24} color={d.primary} />
                       </Pressable>
-                    ) : null}
+                    )}
                   </View>
+                  {routineModal.editMode ? (
+                    <Text style={[styles.routineModalEditorHint, { color: d.onSurfaceVariant }]}>
+                      Clean up the basics first, then update sections and exercise lines below.
+                    </Text>
+                  ) : null}
                   {!routineModal.editMode && routineModal.draft.dayLabel ? (
                     <Text style={[styles.routineModalDay, { color: d.primary }]}>{routineModal.draft.dayLabel}</Text>
                   ) : null}
                 </View>
-
-                {routineModal.editMode ? (
-                  <View style={styles.routineModalFixedFields}>
-                    <Text style={[styles.inputLabel, { color: d.onSurfaceVariant }]}>Program name</Text>
-                    <TextInput
-                      value={routineModal.draft.title}
-                      onChangeText={(t) => updateDraft((prev) => ({ ...prev, title: t }))}
-                      placeholder="e.g. Chest"
-                      placeholderTextColor={d.outline}
-                      style={[styles.modalInput, { color: d.onSurface, borderColor: d.outlineVariant }]}
-                    />
-                    <Text style={[styles.inputLabel, { color: d.onSurfaceVariant }]}>Day label (optional)</Text>
-                    <TextInput
-                      value={routineModal.draft.dayLabel ?? ''}
-                      onChangeText={(t) =>
-                        updateDraft((prev) => ({
-                          ...prev,
-                          dayLabel: t.trim() ? t : undefined,
-                        }))
-                      }
-                      placeholder="e.g. Monday"
-                      placeholderTextColor={d.outline}
-                      style={[styles.modalInput, { color: d.onSurface, borderColor: d.outlineVariant }]}
-                    />
-                  </View>
-                ) : null}
 
                 <ScrollView
                   style={styles.routineModalScroll}
@@ -1529,8 +1526,54 @@ export function WorkoutTrackerScreen() {
                 >
                   {routineModal.editMode ? (
                     <>
+                      <View
+                        style={[
+                          styles.routineMetaCard,
+                          {
+                            backgroundColor: d.surface,
+                            borderColor: d.outlineGhost15,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.routineMetaTitle, { color: d.onSurface }]}>Program details</Text>
+                        <Text style={[styles.routineMetaBody, { color: d.onSurfaceVariant }]}>
+                          These details stay visible on the program card. Keep them short and easy to scan.
+                        </Text>
+                        <Text style={[styles.inputLabel, { color: d.onSurfaceVariant }]}>Program name</Text>
+                        <TextInput
+                          value={routineModal.draft.title}
+                          onChangeText={(t) => updateDraft((prev) => ({ ...prev, title: t }))}
+                          placeholder="e.g. Chest"
+                          placeholderTextColor={d.outline}
+                          style={[styles.modalInput, styles.routineMetaInput, { color: d.onSurface, borderColor: d.outlineVariant }]}
+                        />
+                        <Text style={[styles.inputLabel, { color: d.onSurfaceVariant }]}>Day label (optional)</Text>
+                        <TextInput
+                          value={routineModal.draft.dayLabel ?? ''}
+                          onChangeText={(t) =>
+                            updateDraft((prev) => ({
+                              ...prev,
+                              dayLabel: t.trim() ? t : undefined,
+                            }))
+                          }
+                          placeholder="e.g. Monday"
+                          placeholderTextColor={d.outline}
+                          style={[styles.modalInput, styles.routineMetaInput, { color: d.onSurface, borderColor: d.outlineVariant }]}
+                        />
+                      </View>
+
                       {routineModal.draft.blocks.map((block, bi) => (
-                        <View key={`edit-block-${bi}`} style={styles.routineBlock}>
+                        <View
+                          key={`edit-block-${bi}`}
+                          style={[
+                            styles.routineBlock,
+                            styles.routineEditBlockCard,
+                            {
+                              backgroundColor: d.surface,
+                              borderColor: d.outlineGhost15,
+                            },
+                          ]}
+                        >
                           <View style={styles.routineEditBlockHead}>
                             <TextInput
                               value={block.heading}
@@ -1544,7 +1587,7 @@ export function WorkoutTrackerScreen() {
                               placeholderTextColor={d.outline}
                               style={[
                                 styles.routineSectionTitleInput,
-                                { color: d.secondary, borderColor: d.outlineVariant },
+                                { color: d.onSurface, borderColor: d.outlineVariant },
                               ]}
                             />
                             {routineModal.draft.blocks.length > 1 ? (
@@ -1557,6 +1600,7 @@ export function WorkoutTrackerScreen() {
                                 }
                                 hitSlop={8}
                                 accessibilityLabel="Remove section"
+                                style={[styles.routineIconActionBtn, { backgroundColor: d.surfaceContainerHigh }]}
                               >
                                 <Ionicons name="trash-outline" size={20} color={d.error} />
                               </Pressable>
@@ -1564,7 +1608,19 @@ export function WorkoutTrackerScreen() {
                           </View>
                           {block.items.map((item, ii) => (
                             <View key={`edit-item-${bi}-${ii}`} style={styles.routineEditItemRow}>
-                              <Text style={[styles.routineItemIndex, { color: d.outline }]}>{ii + 1}.</Text>
+                              <View
+                                style={[
+                                  styles.routineItemIndexBadge,
+                                  {
+                                    backgroundColor: d.surfaceContainerHigh,
+                                    borderColor: d.outlineGhost15,
+                                  },
+                                ]}
+                              >
+                                <Text style={[styles.routineItemIndexBadgeText, { color: d.onSurfaceVariant }]}>
+                                  {ii + 1}
+                                </Text>
+                              </View>
                               <TextInput
                                 value={item}
                                 onChangeText={(t) =>
@@ -1581,6 +1637,8 @@ export function WorkoutTrackerScreen() {
                                 }
                                 placeholder="Exercise"
                                 placeholderTextColor={d.outline}
+                                multiline
+                                textAlignVertical="top"
                                 style={[
                                   styles.routineItemEditInput,
                                   { color: d.onSurface, borderColor: d.outlineVariant },
@@ -1599,23 +1657,69 @@ export function WorkoutTrackerScreen() {
                                     }))
                                   }
                                   hitSlop={8}
+                                  style={[styles.routineIconActionBtn, { backgroundColor: d.surfaceContainerHigh }]}
                                 >
                                   <Ionicons name="close-circle-outline" size={22} color={d.outline} />
                                 </Pressable>
                               ) : (
-                                <View style={{ width: 22 }} />
+                                <View style={styles.routineIconActionPlaceholder} />
                               )}
                             </View>
                           ))}
                           <Pressable
                             onPress={() => appendProgramExerciseLine(bi)}
-                            style={styles.routineAddLineBtn}
+                            style={[
+                              styles.routineAddLineBtn,
+                              {
+                                borderColor: d.outlineGhost15,
+                                backgroundColor: d.surfaceContainerHigh,
+                              },
+                            ]}
                           >
                             <Ionicons name="add" size={18} color={d.primary} />
                             <Text style={[styles.routineAddLineText, { color: d.primary }]}>Add exercise line</Text>
                           </Pressable>
                         </View>
                       ))}
+
+                      <Pressable
+                        onPress={appendProgramSection}
+                        style={[
+                          styles.routineAddSectionBtn,
+                          {
+                            borderColor: d.outlineGhost15,
+                            backgroundColor: d.surface,
+                          },
+                        ]}
+                      >
+                        <Ionicons name="albums-outline" size={18} color={d.primary} />
+                        <Text style={[styles.modalGhostText, { color: d.primary }]}>Add section</Text>
+                      </Pressable>
+
+                      <View
+                        style={[
+                          styles.routineDangerZone,
+                          {
+                            backgroundColor: d.surface,
+                            borderColor: d.outlineGhost15,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.routineDangerTitle, { color: d.onSurface }]}>Program actions</Text>
+                        <Text style={[styles.routineDangerBody, { color: d.onSurfaceVariant }]}>
+                          Use these only when you want to remove this program or replace everything with the sample split.
+                        </Text>
+                        <Pressable onPress={confirmDeleteProgram} style={styles.routineResetLink}>
+                          <Text style={[styles.routineResetLinkText, { color: d.error }]}>Delete program…</Text>
+                        </Pressable>
+                        {programs.length > 0 ? (
+                          <Pressable onPress={confirmResetAllPrograms} style={styles.routineResetLink}>
+                            <Text style={[styles.routineResetLinkText, { color: d.error }]}>
+                              Reset all programs to samples…
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
                     </>
                   ) : (
                     <>
@@ -1644,39 +1748,20 @@ export function WorkoutTrackerScreen() {
                   ]}
                 >
                   {routineModal.editMode ? (
-                    <>
+                    <View style={[styles.modalActions, styles.routineModalFooterActions]}>
                       <Pressable
-                        onPress={appendProgramSection}
-                        style={[styles.routineAddSectionBtn, { borderColor: d.outlineGhost15 }]}
+                        onPress={cancelProgramEdit}
+                        style={[styles.modalGhostBtn, { borderColor: d.outlineGhost15 }]}
                       >
-                        <Ionicons name="albums-outline" size={18} color={d.primary} />
-                        <Text style={[styles.modalGhostText, { color: d.primary }]}>Add section</Text>
+                        <Text style={[styles.modalGhostText, { color: d.primary }]}>Cancel</Text>
                       </Pressable>
-                      <View style={[styles.modalActions, styles.routineModalFooterActions]}>
-                        <Pressable
-                          onPress={cancelProgramEdit}
-                          style={[styles.modalGhostBtn, { borderColor: d.outlineGhost15 }]}
-                        >
-                          <Text style={[styles.modalGhostText, { color: d.primary }]}>Cancel</Text>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => void saveProgramEdits()}
-                          style={[styles.modalPrimaryBtn, { backgroundColor: d.primaryContainer }]}
-                        >
-                          <Text style={styles.modalPrimaryText}>Save</Text>
-                        </Pressable>
-                      </View>
-                      <Pressable onPress={confirmDeleteProgram} style={styles.routineResetLink}>
-                        <Text style={[styles.routineResetLinkText, { color: d.error }]}>Delete program…</Text>
+                      <Pressable
+                        onPress={() => void saveProgramEdits()}
+                        style={[styles.modalPrimaryBtn, { backgroundColor: d.primaryContainer }]}
+                      >
+                        <Text style={styles.modalPrimaryText}>Save</Text>
                       </Pressable>
-                      {programs.length > 0 ? (
-                        <Pressable onPress={confirmResetAllPrograms} style={styles.routineResetLink}>
-                          <Text style={[styles.routineResetLinkText, { color: d.error }]}>
-                            Reset all programs to samples…
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                    </>
+                    </View>
                   ) : (
                     <>
                       {sessionStarted ? (
@@ -2158,7 +2243,7 @@ const styles = StyleSheet.create({
   routineModalShell: {
     borderRadius: 24,
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 480,
     alignSelf: 'center',
     overflow: 'hidden',
   },
@@ -2170,16 +2255,16 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  routineModalFixedFields: {
-    flexShrink: 0,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.md,
   },
   routineModalTitle: {
     fontSize: 20,
     fontWeight: '800',
+  },
+  routineModalEditorHint: {
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: spacing.xs,
   },
   routineModalDay: {
     fontSize: 14,
@@ -2194,21 +2279,45 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   routineModalScrollContent: {
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.lg,
     flexGrow: 1,
   },
   routineModalFooter: {
     flexShrink: 0,
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    gap: spacing.md,
+    paddingTop: spacing.sm,
+    gap: spacing.sm,
   },
   routineModalFooterActions: {
     marginTop: 0,
   },
+  routineMetaCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  routineMetaTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  routineMetaBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  routineMetaInput: {
+    marginBottom: spacing.md,
+  },
   routineBlock: {
     marginBottom: spacing.md,
+  },
+  routineEditBlockCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: spacing.md,
   },
   routineBlockHeading: {
     fontSize: 12,
@@ -2328,45 +2437,73 @@ const styles = StyleSheet.create({
   },
   routineEditIconBtn: {
     padding: spacing.sm,
-    borderRadius: 12,
+    borderRadius: 14,
   },
   routineEditBlockHead: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.sm,
     marginBottom: spacing.sm,
   },
   routineSectionTitleInput: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.sm,
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+    borderRadius: 14,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 4,
+    fontSize: 14,
+    fontWeight: '700',
   },
   routineEditItemRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.sm,
     marginBottom: spacing.sm,
+  },
+  routineItemIndexBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.xs,
+  },
+  routineItemIndexBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   routineItemEditInput: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 14,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
+    paddingVertical: spacing.md,
     fontSize: 15,
+    minHeight: 54,
+    lineHeight: 21,
+  },
+  routineIconActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.xs,
+  },
+  routineIconActionPlaceholder: {
+    width: 36,
+    height: 36,
   },
   routineAddLineBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    marginTop: spacing.xs,
+    borderWidth: 1,
+    borderRadius: 14,
   },
   routineAddLineText: {
     fontSize: 14,
@@ -2378,12 +2515,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
     borderWidth: 1,
-    borderRadius: 14,
+    borderStyle: 'dashed',
+    borderRadius: 16,
     paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+  },
+  routineDangerZone: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  routineDangerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  routineDangerBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: spacing.xs,
   },
   routineResetLink: {
-    paddingVertical: spacing.md,
-    alignItems: 'center',
+    paddingVertical: spacing.sm + 2,
+    alignItems: 'flex-start',
   },
   routineResetLinkText: {
     fontSize: 14,
