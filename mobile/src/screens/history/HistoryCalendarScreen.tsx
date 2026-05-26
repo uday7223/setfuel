@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
   Dimensions,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -40,9 +41,11 @@ export function HistoryCalendarScreen() {
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [days, setDays] = useState<HistoryCalendarDay[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadedMonthKey, setLoadedMonthKey] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const loadRequestIdRef = useRef(0);
 
   const slideX = useSharedValue(SCREEN_WIDTH);
 
@@ -65,27 +68,42 @@ export function HistoryCalendarScreen() {
 
   const monthKey = `${viewYear}-${viewMonth}`;
 
-  const loadMonth = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const from = toLocalDateString(startOfMonth(viewYear, viewMonth));
-      const to = toLocalDateString(endOfMonth(viewYear, viewMonth));
-      const res = await historyService.getCalendar(from, to);
-      setDays(res.days);
-      setLoadedMonthKey(monthKey);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Could not load history';
-      setError(msg);
-      if (loadedMonthKey !== monthKey) setDays([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [viewYear, viewMonth, monthKey, loadedMonthKey]);
+  const loadMonth = useCallback(
+    async ({
+      showSpinner = false,
+      showRefresh = false,
+    }: {
+      showSpinner?: boolean;
+      showRefresh?: boolean;
+    } = {}) => {
+      const requestId = ++loadRequestIdRef.current;
+      if (showSpinner) setLoading(true);
+      if (showRefresh) setRefreshing(true);
+      setError(null);
+      try {
+        const from = toLocalDateString(startOfMonth(viewYear, viewMonth));
+        const to = toLocalDateString(endOfMonth(viewYear, viewMonth));
+        const res = await historyService.getCalendar(from, to);
+        if (requestId !== loadRequestIdRef.current) return;
+        setDays(res.days);
+        setLoadedMonthKey(monthKey);
+      } catch (e) {
+        if (requestId !== loadRequestIdRef.current) return;
+        const msg = e instanceof Error ? e.message : 'Could not load history';
+        setError(msg);
+        if (loadedMonthKey !== monthKey) setDays([]);
+      } finally {
+        if (requestId !== loadRequestIdRef.current) return;
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [viewYear, viewMonth, monthKey, loadedMonthKey],
+  );
 
   useEffect(() => {
-    void loadMonth();
-  }, [viewYear, viewMonth]);
+    void loadMonth({ showSpinner: true });
+  }, [loadMonth]);
 
   useFocusEffect(
     useCallback(() => {
@@ -210,12 +228,24 @@ export function HistoryCalendarScreen() {
       ) : error && days.length === 0 ? (
         <View style={styles.loader}>
           <Text style={[styles.errorText, { color: d.secondary }]}>{error}</Text>
-          <Pressable onPress={() => void loadMonth()} style={[styles.retryBtn, { backgroundColor: d.card }]}>
+          <Pressable
+            onPress={() => void loadMonth({ showSpinner: true })}
+            style={[styles.retryBtn, { backgroundColor: d.card }]}
+          >
             <Text style={{ color: d.primary, fontWeight: '700' }}>RETRY</Text>
           </Pressable>
         </View>
       ) : (
         <ScrollView
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void loadMonth({ showRefresh: true })}
+              tintColor={d.primary}
+              colors={[d.primary]}
+              progressBackgroundColor={d.surfaceContainer}
+            />
+          }
           contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
           showsVerticalScrollIndicator={false}
           scrollEnabled={!selectedDate}
