@@ -4,6 +4,7 @@ import {
   Image,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -94,12 +95,13 @@ export function HomeScreen() {
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [reloadNonce, setReloadNonce] = useState(0);
   const [tipIndex, setTipIndex] = useState(0);
   const tipOpacity = useSharedValue(1);
   const tipTranslateY = useSharedValue(0);
   const skipTipEnterAnim = useRef(true);
+  const loadRequestIdRef = useRef(0);
 
   const tipAnimatedStyle = useAnimatedStyle(() => ({
     opacity: tipOpacity.value,
@@ -137,11 +139,19 @@ export function HomeScreen() {
     tipTranslateY.value = withTiming(0, { duration: TIP_FADE_IN_MS });
   }, [tipIndex, tipOpacity, tipTranslateY]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
+  const loadHomeData = useCallback(
+    async ({
+      showSpinner = false,
+      showRefresh = false,
+    }: {
+      showSpinner?: boolean;
+      showRefresh?: boolean;
+    } = {}) => {
+      const requestId = ++loadRequestIdRef.current;
+      if (showSpinner) setLoading(true);
+      if (showRefresh) setRefreshing(true);
       setLoadError(null);
+
       try {
         if (!USE_LOCAL && !BASE_URL.trim()) {
           throw new Error(
@@ -152,12 +162,12 @@ export function HomeScreen() {
           userService.getProfile(),
           userService.getDashboardSummary(),
         ]);
-        if (cancelled) return;
+        if (requestId !== loadRequestIdRef.current) return;
         setProfile(p);
         setAvatarUri(p.avatarUri);
         setSummary(s);
       } catch (e) {
-        if (cancelled) return;
+        if (requestId !== loadRequestIdRef.current) return;
         const err = e as Error & { status?: number };
         const hint = err.message ?? 'Could not load dashboard';
         const suffix = typeof err.status === 'number' ? ` (HTTP ${err.status})` : '';
@@ -165,13 +175,17 @@ export function HomeScreen() {
         setProfile(null);
         setSummary(null);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (requestId !== loadRequestIdRef.current) return;
+        setLoading(false);
+        setRefreshing(false);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadNonce]);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    void loadHomeData({ showSpinner: true });
+  }, [loadHomeData]);
 
   useFocusEffect(
     useCallback(() => {
@@ -229,7 +243,7 @@ export function HomeScreen() {
           <Text style={[styles.loadErrorTitle, { color: d.onSurface }]}>Could not load</Text>
           <Text style={[styles.loadErrorBody, { color: d.secondary }]}>{loadError}</Text>
           <Pressable
-            onPress={() => setReloadNonce((n) => n + 1)}
+            onPress={() => void loadHomeData({ showSpinner: true })}
             accessibilityRole="button"
             style={({ pressed }) => [styles.retryBtn, { backgroundColor: d.card }, pressed && { opacity: 0.9 }]}
           >
@@ -239,6 +253,15 @@ export function HomeScreen() {
       ) : (
       <ScrollView
         style={styles.scroll}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void loadHomeData({ showRefresh: true })}
+            tintColor={d.primary}
+            colors={[d.primary]}
+            progressBackgroundColor={d.surfaceContainer}
+          />
+        }
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + spacing.xxl + 56 }]}
         showsVerticalScrollIndicator={false}
       >
