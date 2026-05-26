@@ -12,6 +12,14 @@ import { apiFetch, localId, USE_LOCAL } from './api';
 
 const DAILY_GOAL_KCAL = 2500;
 
+function toLocalDateKey(dateLike: Date | string): string {
+  const date = typeof dateLike === 'string' ? new Date(dateLike) : dateLike;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function formatTime(date: Date): string {
   return date
     .toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true })
@@ -93,7 +101,9 @@ export async function removeMeal(id: string): Promise<void> {
 
 export async function getDailySummary(): Promise<DailySummary> {
   if (USE_LOCAL) {
-    const totals = _localMeals.reduce<Macros>(
+    const todayKey = toLocalDateKey(new Date());
+    const todayMeals = _localMeals.filter((meal) => toLocalDateKey(meal.createdAt) === todayKey);
+    const totals = todayMeals.reduce<Macros>(
       (acc, m) => ({
         protein: acc.protein + (m.macros?.protein ?? 0),
         carbs: acc.carbs + (m.macros?.carbs ?? 0),
@@ -102,10 +112,10 @@ export async function getDailySummary(): Promise<DailySummary> {
       { protein: 0, carbs: 0, fats: 0 },
     );
     return {
-      totalKcal: _localMeals.reduce((s, m) => s + m.kcal, 0),
+      totalKcal: todayMeals.reduce((s, m) => s + m.kcal, 0),
       goalKcal: DAILY_GOAL_KCAL,
       macros: totals,
-      mealsLogged: _localMeals.length,
+      mealsLogged: todayMeals.length,
     };
   }
   const q = appendClientTimeZone(new URLSearchParams());

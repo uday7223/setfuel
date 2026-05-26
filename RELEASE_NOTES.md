@@ -37,7 +37,7 @@ Copy this section for each new version:
 
 ---
 
-## [Unreleased]
+## [1.2.2] - 2026-05-27
 
 ### Build metadata
 - **Date:** 2026-05-26
