@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Planned (not implemented) |
-| **Last updated** | 2026-05-29 |
+| **Last updated** | 2026-05-30 |
 | **Owner** | Product / engineering |
-| **Related docs** | [ai-food-agent.txt](./ai-food-agent.txt) (vision-based meal logging), [ARCHITECTURE.md](../ARCHITECTURE.md), [STATUS_REPORT.md](../STATUS_REPORT.md) |
+| **Related docs** | [ai-coach-architecture.md](./ai-coach-architecture.md), [ai-food-agent.txt](./ai-food-agent.txt), [ARCHITECTURE.md](../ARCHITECTURE.md), [STATUS_REPORT.md](../STATUS_REPORT.md) |
 
 ---
 
@@ -27,11 +27,12 @@
 14. [Safety, privacy, and compliance](#14-safety-privacy-and-compliance)
 15. [Cost, rate limits, and reliability](#15-cost-rate-limits-and-reliability)
 16. [Phased rollout plan](#16-phased-rollout-plan)
-17. [Testing strategy](#17-testing-strategy)
-18. [Observability and operations](#18-observability-and-operations)
-19. [Future enhancements](#19-future-enhancements)
-20. [Open decisions](#20-open-decisions)
-21. [Appendix: codebase references](#21-appendix-codebase-references)
+17. [Phase 2b — Workout intelligence](#17-phase-2b--workout-intelligence)
+18. [Testing strategy](#18-testing-strategy)
+19. [Observability and operations](#19-observability-and-operations)
+20. [Future enhancements](#20-future-enhancements)
+21. [Open decisions](#21-open-decisions)
+22. [Appendix: codebase references](#22-appendix-codebase-references)
 
 ---
 
@@ -46,7 +47,9 @@ The coach:
 - Returns **grounded** responses: numbers and exercise names must come from provided context; when data is missing, the coach says so and nudges logging instead of inventing entries.
 - Runs **entirely on the backend** so API keys stay secret, context is consistent with the dashboard, and rate limits protect cost.
 
-**Recommended delivery order:** Daily Brief (Home card) → Chat tab → Tool-augmented queries → Proactive notifications.
+**Recommended delivery order:** Daily Brief (Home card) → Chat tab → **Workout intelligence (Phase 2b)** → Contextual history + persistence → Proactive notifications.
+
+Phase 2b is the milestone that unlocks split-aware coaching—missed body parts, repeated sessions, and “what should I train next?” See [§17](#17-phase-2b--workout-intelligence).
 
 This document is the implementation blueprint. Code does not exist yet; all paths and types below are **proposed** unless marked as *existing*.
 
@@ -136,10 +139,13 @@ The coach is not a general chatbot. It is a **read-only analyst** over SetFuel l
 | “What did I do in my last workout?” | Use last ended session: exercises, sets completed, volume, duration |
 | “Compare this week to last week” | Use calendar aggregates (workout days, meal days); admit limits if &lt; 7 days of data |
 | “Should I train today?” | Use `lastWorkoutDaysAgo` + recent calendar; no medical clearance advice |
+| “What body part did I miss this week?” | **Phase 2b** — `analyze_training_split` vs `workout_program` |
+| “Which sessions did I repeat too much?” | **Phase 2b** — repetition counts by body part / program title |
+| “What should I train next?” | **Phase 2b** — `suggestedNext` from split analysis + last session recency |
 
 ### 4.3 Personas (tone)
 
-Pick one default in [§20 Open decisions](#20-open-decisions):
+Pick one default in [§21 Open decisions](#21-open-decisions):
 
 - **Analyst** — neutral, bullet facts, minimal encouragement.
 - **Gym buddy** (recommended default) — concise, motivating, still data-grounded.
@@ -192,6 +198,14 @@ Pick one default in [§20 Open decisions](#20-open-decisions):
 4. What should I focus on tomorrow?
 5. How active was I this week?
 
+**Suggested prompts (Phase 2b — workout intelligence):**
+
+1. What did I miss this week?
+2. Which body parts did I train most?
+3. What should I do in the gym today?
+4. Did I repeat any session too often this month?
+5. Review my split for the last 30 days
+
 **Conversation:**
 
 - v1: Client sends last **N** turns (e.g. 10) in request body; server does not require `conversationId`.
@@ -211,7 +225,7 @@ Pros: no tab bar change. Cons: slightly hidden.
 **Option 3 — FAB on Home**  
 Floating action opens coach modal.
 
-Document decision in §20 before implementation.
+Document decision in §21 before implementation.
 
 ### 5.5 Error and offline UX
 
@@ -912,6 +926,34 @@ After N consecutive LLM failures, return cached brief or static fallback for 15 
 
 **Exit criteria:** 20-question QA script; no hallucinated meals in stress test.
 
+**Does not include:** body-part gap analysis, month-level split review, or grounded “train X next” suggestions — see [§17 Phase 2b](#17-phase-2b--workout-intelligence).
+
+---
+
+### Phase 2b — Workout intelligence (summary)
+
+**Depends on:** Phase 2 chat + agentic tool loop (see [ai-coach-architecture.md](./ai-coach-architecture.md)).
+
+**Delivers:** Split-aware workout coaching — missed body parts, repeated sessions, exercise-level history, and “what to train next” grounded in the user’s programs and logged sessions.
+
+**Backend (checklist)**
+
+- [ ] `get_programs` tool
+- [ ] `get_session_history` tool
+- [ ] `analyze_training_split` tool (server-side logic, not LLM math)
+- [ ] `resolveBodyPart` / exercise → muscle mapping module
+- [ ] Optional migration: `workout_session.program_id`
+- [ ] Extend daily brief with optional workout bullet when 2b ships
+
+**Mobile**
+
+- [ ] Workout intelligence prompt chips on `CoachScreen`
+- [ ] Optional: “Train next: Back” chip on Home brief (from `suggestedNext`)
+
+**Exit criteria:** See [§17.10](#1710-exit-criteria).
+
+**Full specification:** [§17](#17-phase-2b--workout-intelligence).
+
 ---
 
 ### Phase 3 — Contextual + persistence
@@ -925,42 +967,518 @@ After N consecutive LLM failures, return cached brief or static fallback for 15 
 
 ### Phase 4 — Advanced coach
 
-- [ ] Tool calling: `getHistoryDay(date)`, `getSession(id)`
 - [ ] Profile goals: protein target, cut/bulk (`PATCH /user/profile`)
 - [ ] Calories burned in context (when feature ships)
 - [ ] Push notification: “You're 800 kcal under goal”
+- [ ] Progressive overload / PR detection across sessions
+- [ ] Voice input to coach
 
 ---
 
-## 17. Testing strategy
+## 17. Phase 2b — Workout intelligence
 
-### 17.1 Backend unit tests
+This section specifies **split-aware workout coaching**: answering questions about missed body parts, repeated sessions, monthly patterns, and what to train next—grounded in the user’s **workout programs** and **completed session history**.
+
+**Prerequisites**
+
+| Prerequisite | Status |
+|--------------|--------|
+| Phase 2 chat (`POST /v1/coach/chat`) with agentic tool loop | Required |
+| `workout_program` rows synced for user (API mode) | Required |
+| Completed `workout_session` rows with `exercises` JSONB | Required |
+| Phase 1 daily brief | Optional enhancer (workout bullet from 2b analysis) |
+
+**Not in scope for Phase 2b**
+
+- Generating full custom programs from scratch (only suggests **next body part / program** from user’s existing list)
+- Injury diagnosis or rehab protocols
+- Calories burned or recovery scoring
+- Replacing the Workout tab UI (coach advises; user still starts sessions manually)
+
+---
+
+### 17.1 Problem statement
+
+Phase 1 and Phase 2 answer **“what happened?”** (kcal, last session, workout day counts). Users also want **“what should I do?”** at the split level:
+
+| User question | Requires |
+|---------------|----------|
+| “What body part did I **miss** this week / month?” | Expected split (`workout_program`) vs actual sessions |
+| “Which session did I **repeat** a lot?” | Count sessions per body part / program over a range |
+| “What **exercises** should I do next?” | Program `blocks` for suggested body part + recent exercise names |
+| “Based on **today**, what fits my plan?” | Day-of-week labels (`day_label`) + recency + missed parts |
+
+Phase 1 loads only **7-day workout day count** and **last session top exercises**. Phase 2 can fetch individual days but has **no body-part model** and **no programs in context**. Phase 2b closes that gap.
+
+---
+
+### 17.2 Current data gaps
+
+| Gap | Impact | Phase 2b fix |
+|-----|--------|--------------|
+| `workout_session` has no `program_id` | Cannot reliably know if a session was “Chest Monday” vs ad-hoc | Optional `program_id` on session start; fallback inference |
+| Body part not stored on session | Must infer from program title or exercise names | `resolveBodyPart()` module |
+| Programs not in coach tools | Coach cannot know user’s intended split | `get_programs` tool |
+| No month-level session rollup | “This month” needs up to 30 sessions | `get_session_history` + `analyze_training_split` |
+| LLM guessing muscle groups | Hallucinated “you missed legs” | Server-side `analyze_training_split` output is source of truth |
+
+**Existing schema** (`backend/sql/002_api_core.sql`):
+
+```sql
+-- workout_program: id, title, day_label, blocks (JSONB)
+-- workout_session: id, started_at, ended_at, exercises (JSONB) — no program_id today
+```
+
+**Program titles in the wild** (from `personalRoutines.ts`): `Chest`, `Chest 2.0`, `Back`, `Shoulders`, `Legs`, etc.—`title` is the primary body-part signal when `program_id` is present.
+
+---
+
+### 17.3 Schema changes (recommended)
+
+**Migration:** `backend/sql/006_coach_workout_intelligence.sql`
+
+```sql
+-- Link completed sessions to the program the user started (optional but strongly recommended)
+ALTER TABLE workout_session
+  ADD COLUMN IF NOT EXISTS program_id TEXT REFERENCES workout_program (id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_workout_session_user_program
+  ON workout_session (user_id, program_id)
+  WHERE program_id IS NOT NULL;
+
+-- Optional denormalized cache for coach (can be computed on the fly instead)
+-- ALTER TABLE workout_session ADD COLUMN IF NOT EXISTS body_part TEXT;
+```
+
+**Mobile / API change:** When user starts a workout from a program card, `POST /sessions` includes `programId`. Existing sessions remain `program_id = NULL` (inference fallback only).
+
+**Backfill:** Not required for launch; coach uses inference for old sessions.
+
+---
+
+### 17.4 Body-part resolution
+
+**Module:** `backend/src/coach/resolveBodyPart.ts`
+
+Every completed session is classified into a **canonical body part** for analytics.
+
+#### 17.4.1 Resolution priority
+
+```text
+1. session.program_id → workout_program.title → normalize(title)
+2. Else: majority vote from exercise names → muscle group via keyword map
+3. Else: "unknown" (excluded from missed/repeated counts; surfaced in dataQuality.warnings)
+```
+
+#### 17.4.2 Canonical body parts
+
+```typescript
+type BodyPart =
+  | 'chest'
+  | 'back'
+  | 'shoulders'
+  | 'legs'
+  | 'arms'
+  | 'core'
+  | 'full_body'
+  | 'cardio'
+  | 'unknown';
+```
+
+#### 17.4.3 Title normalization (examples)
+
+| Program `title` | Canonical |
+|-----------------|-----------|
+| `Chest`, `Chest 2.0` | `chest` |
+| `Back` | `back` |
+| `Shoulders` | `shoulders` |
+| `Legs`, `Leg day` | `legs` |
+| `Arms`, `Biceps / Triceps` | `arms` |
+
+Store rules in `backend/src/coach/bodyPartRules.ts` (title regex + keyword map). LLM does **not** define the mapping.
+
+#### 17.4.4 Exercise keyword map (fallback)
+
+When `program_id` is null, scan `exercises[].name` (lowercased):
+
+| Keywords | Body part |
+|----------|-----------|
+| `bench`, `fly`, `push-up`, `chest press` | `chest` |
+| `row`, `pulldown`, `pull-up`, `deadlift` | `back` |
+| `ohp`, `overhead press`, `lateral raise`, `arnold` | `shoulders` |
+| `squat`, `lunge`, `leg press`, `calf` | `legs` |
+| `curl`, `tricep`, `pushdown` | `arms` |
+| `plank`, `crunch`, `ab` | `core` |
+
+If top two body parts tie within 10% of hits, use `unknown` and warn.
+
+---
+
+### 17.5 New coach tools
+
+Register in `backend/src/coach/tools/` (see [ai-coach-architecture.md](./ai-coach-architecture.md)). All tools enforce `user_id` from JWT.
+
+#### Tool 10: `get_programs`
+
+| Field | Value |
+|-------|-------|
+| **Purpose** | User’s intended training split |
+| **Input** | `{}` |
+| **Output** | `{ programs: PersonalRoutine[] }` — same shape as `GET /v1/programs` |
+| **SQL** | `SELECT id, title, day_label, blocks FROM workout_program WHERE user_id = $1 ORDER BY title` |
+
+#### Tool 11: `get_session_history`
+
+| Field | Value |
+|-------|-------|
+| **Purpose** | Completed sessions in a date range with stats and body-part classification |
+| **Input** | `{ from: "YYYY-MM-DD", to: "YYYY-MM-DD", limit?: number }` — `limit` max 60, default 30 |
+| **Output** | See `SessionHistoryEntry` below |
+| **SQL** | Sessions where `ended_at IS NOT NULL`, local-date filter via `getLocalDateExpr` |
+
+```typescript
+type SessionHistoryEntry = {
+  id: string;
+  date: string;                    // local YYYY-MM-DD
+  startedAt: string;
+  endedAt: string;
+  programId: string | null;
+  programTitle: string | null;   // join workout_program if program_id set
+  bodyPart: BodyPart;
+  bodyPartSource: 'program' | 'exercises' | 'unknown';
+  stats: SessionStats;           // from computeSessionStats()
+  exerciseNames: string[];       // all names, max 20
+};
+```
+
+#### Tool 12: `analyze_training_split`
+
+| Field | Value |
+|-------|-------|
+| **Purpose** | **Server-side** split analysis—the LLM explains results; it does not compute them |
+| **Input** | `{ from: "YYYY-MM-DD", to: "YYYY-MM-DD" }` — max range 90 days |
+| **Output** | `TrainingSplitAnalysis` (below) |
+| **Implementation** | Calls `get_programs` + `get_session_history` internally; pure TypeScript aggregation |
+
+```typescript
+type TrainingSplitAnalysis = {
+  range: { from: string; to: string };
+  expectedBodyParts: BodyPart[];     // from program titles (unique canonical)
+  sessionsAnalyzed: number;
+  sessionsWithUnknownBodyPart: number;
+
+  byBodyPart: {
+    bodyPart: BodyPart;
+    sessionCount: number;
+    totalVolumeKg: number;
+    lastTrainedDate: string | null;
+    programTitles: string[];       // e.g. ["Chest", "Chest 2.0"]
+  }[];
+
+  missed: {
+    bodyPart: BodyPart;
+    expectedFromPrograms: boolean; // true if user has a program for this part
+    daysSinceLastTrained: number | null;
+  }[];
+
+  repeated: {
+    bodyPart: BodyPart;
+    sessionCount: number;
+    threshold: number;             // e.g. 3 in range
+    message: string;               // deterministic, e.g. "Chest trained 4 times"
+  }[];
+
+  suggestedNext: {
+    bodyPart: BodyPart;
+    programId: string | null;
+    programTitle: string | null;
+    reason: string;                // deterministic code → human string
+    dayLabelMatch: string | null;  // e.g. "Wednesday" if program matches today
+  };
+
+  dataQuality: {
+    warnings: string[];
+  };
+};
+```
+
+---
+
+### 17.6 `analyze_training_split` algorithm
+
+**File:** `backend/src/coach/analyzeTrainingSplit.ts`
+
+#### Step 1 — Load inputs
+
+1. `programs = get_programs(userId)`
+2. `sessions = get_session_history(userId, from, to)`
+3. `expectedBodyParts` = unique canonical parts from each `program.title`
+
+#### Step 2 — Aggregate by body part
+
+For each session with `bodyPart !== 'unknown'`:
+
+- Increment `sessionCount`
+- Add `stats.volumeKg` to `totalVolumeKg`
+- Track `lastTrainedDate` (max date)
+- Collect distinct `programTitle` values
+
+#### Step 3 — Missed body parts
+
+For each `bodyPart` in `expectedBodyParts`:
+
+- If `sessionCount === 0` in range → **missed**
+- Else if `daysSinceLastTrained > 7` (configurable `COACH_MISSED_DAYS_THRESHOLD`) → **missed** (stale)
+
+Parts in `expectedBodyParts` with zero matching programs are skipped.
+
+#### Step 4 — Repeated sessions
+
+Default threshold: **≥ 3 sessions** same `bodyPart` in range (env: `COACH_REPEAT_THRESHOLD=3`).
+
+Flag as `repeated` if `sessionCount >= threshold`. Ties for “most repeated” sorted by `sessionCount` desc.
+
+#### Step 5 — Suggested next session
+
+Priority order (first match wins):
+
+| Priority | Rule | `reason` code |
+|----------|------|---------------|
+| 1 | Body part in `missed` with highest `daysSinceLastTrained` (or never trained) | `missed_longest` |
+| 2 | Program whose `day_label` matches **today’s weekday** (user TZ) and body part not trained today | `day_label_match` |
+| 3 | Body part with lowest `sessionCount` in range among `expectedBodyParts` | `lowest_frequency` |
+| 4 | If no programs: suggest body part from `lastWorkout` inverse (e.g. trained chest → suggest back) — **weak** | `recency_balance` |
+
+Pick `programId` / `programTitle` from user’s programs where `normalize(title) === suggestedNext.bodyPart`. If multiple (e.g. Chest + Chest 2.0), prefer program not used in most recent session for that part.
+
+#### Step 6 — Suggested exercises (for coach narrative)
+
+When coach needs exercise names, attach from chosen program’s `blocks[].items` (first block, up to 8 items)—**not** invented by LLM.
+
+```typescript
+type SuggestedExercises = {
+  programTitle: string;
+  exercises: string[];  // from blocks
+};
+```
+
+Return inside `suggestedNext` or as separate field `suggestedExercises`.
+
+#### Step 7 — Data quality warnings
+
+```typescript
+if (programs.length === 0) warnings.push('No workout programs on file; add programs on the Workout tab.');
+if (sessionsAnalyzed === 0) warnings.push('No completed workouts in range.');
+if (sessionsWithUnknownBodyPart > 0)
+  warnings.push(`${sessionsWithUnknownBodyPart} session(s) could not be classified by body part.`);
+```
+
+---
+
+### 17.7 Example user flows
+
+#### Flow A — “What did I miss this week?”
+
+```text
+User → POST /coach/chat { message: "What did I miss this week?" }
+
+Orchestrator:
+  1. LLM → tool: analyze_training_split({ from: monday, to: today })
+  2. Tool returns { missed: [{ bodyPart: "back", daysSinceLastTrained: null }, ...] }
+  3. LLM → "You hit Chest twice and Shoulders once. You didn't train Back this week.
+            Your Back program is 'Back' (Wednesday)—want to prioritize that next?"
+```
+
+#### Flow B — “Which sessions did I repeat a lot this month?”
+
+```text
+  1. analyze_training_split({ from: firstOfMonth, to: today })
+  2. repeated: [{ bodyPart: "chest", sessionCount: 4, threshold: 3 }]
+  3. LLM explains with exact counts from tool output
+```
+
+#### Flow C — “What should I train today?”
+
+```text
+  1. analyze_training_split({ from: today-30d, to: today })
+  2. suggestedNext: { bodyPart: "back", programTitle: "Back", reason: "day_label_match" }
+  3. get_programs() if needed for block items
+  4. LLM: "Today's Wednesday—your Back day. Last Back session was 9 days ago.
+            Consider: Pull-ups, Seated cable row, Lat pulldown… (from your program)."
+```
+
+#### Flow D — Daily brief enhancement (optional)
+
+After Phase 2b, `GET /v1/coach/daily-brief` may add one bullet:
+
+```text
+analyze_training_split({ from: today-7d, to: today }) → suggestedNext
+Bullet: "Suggestion: Back day — you haven't trained back in 9 days."
+```
+
+---
+
+### 17.8 LLM and prompt rules (Phase 2b)
+
+Add to system prompt when workout tools are enabled:
+
+```text
+WORKOUT INTELLIGENCE RULES:
+1. For missed parts, repeats, and "what's next", ALWAYS call analyze_training_split first.
+2. Never invent body parts, session counts, or program names—use tool output only.
+3. When suggesting exercises, list names from suggestedNext / program blocks only.
+4. If dataQuality.warnings includes missing programs, tell user to add programs on Workout tab.
+5. If bodyPart is unknown for many sessions, say classification is partial—do not guess.
+6. "Missed" means missed relative to the user's own programs, not a generic bro-split.
+```
+
+**Tool selection hints** (orchestrator can inject on keyword match):
+
+| User message contains | Prefer tool |
+|-----------------------|-------------|
+| `miss`, `skip`, `forgot` | `analyze_training_split` (7d or 30d) |
+| `repeat`, `too much`, `often` | `analyze_training_split` (30d) |
+| `next`, `today`, `should I train` | `analyze_training_split` (30d) |
+| `month` | `from` = first day of current month |
+
+---
+
+### 17.9 API and mobile changes
+
+**No new HTTP routes** — Phase 2b is delivered through existing `POST /v1/coach/chat` tool registrations.
+
+**Optional:** extend daily brief context builder to call `analyzeTrainingSplit` for one bullet (see §17.7 Flow D).
+
+**Mobile — `CoachScreen` prompt chips** (§5.3)
+
+**Mobile — `POST /sessions` payload** (when starting from program card):
+
+```typescript
+// workoutService.startSession
+{ programId?: string }  // new optional field
+```
+
+**Types — `mobile/src/types/coach.ts`:**
+
+```typescript
+export type TrainingSplitAnalysis = { /* mirror §17.5 */ };
+
+export type CoachChatResponse = {
+  reply: string;
+  focusDate: string;
+  workoutAnalysis?: TrainingSplitAnalysis;  // optional: attach for UI chips / debug
+  citations?: { type: 'session' | 'program'; id: string; label: string }[];
+};
+```
+
+Exposing `workoutAnalysis` on the response is optional; enables a future “View split summary” card in chat.
+
+---
+
+### 17.10 Exit criteria
+
+| # | Scenario | Pass condition |
+|---|----------|----------------|
+| 1 | User with Chest + Back programs, only Chest logged 3× in 7d | Coach says Back missed; counts match DB |
+| 2 | User asks “repeat too much” with 4 Chest sessions in 30d | `repeated` cites Chest ≥ threshold |
+| 3 | “What should I train today?” on Wednesday with Back `day_label` | `suggestedNext.bodyPart === 'back'` |
+| 4 | Session started with `programId` | Classified via `program`, not keyword guess |
+| 5 | Session without `programId` but bench exercises | Classified `chest` via keywords |
+| 6 | No programs | Warning + generic encouragement, no fake missed list |
+| 7 | No sessions in range | Honest empty state, no invented workouts |
+| 8 | LLM stress test | Zero body parts in reply not present in `analyze_training_split` output |
+
+---
+
+### 17.11 Implementation checklist
+
+**Backend**
+
+- [ ] `006_coach_workout_intelligence.sql` (optional `program_id`)
+- [ ] `resolveBodyPart.ts` + `bodyPartRules.ts`
+- [ ] `analyzeTrainingSplit.ts`
+- [ ] Tools: `get_programs`, `get_session_history`, `analyze_training_split`
+- [ ] Register tools in orchestrator tool registry
+- [ ] Update `POST /sessions` to accept and persist `programId`
+- [ ] Unit tests: normalization, aggregation, suggestedNext priority
+- [ ] Integration test: mocked sessions → expected `missed` / `repeated`
+
+**Mobile**
+
+- [ ] Pass `programId` when starting workout from program card
+- [ ] Phase 2b prompt chips on `CoachScreen`
+- [ ] (Optional) brief bullet for `suggestedNext`
+
+**Docs / ops**
+
+- [ ] Update [ai-coach-architecture.md](./ai-coach-architecture.md) tool catalog (tools 10–12)
+- [ ] `RELEASE_NOTES.md` entry when shipped
+
+---
+
+### 17.12 Limitations and honesty
+
+| Limitation | Coach behavior |
+|------------|----------------|
+| Ad-hoc sessions without `program_id` | May classify as `unknown` or wrong part—disclose uncertainty |
+| User has no programs | Cannot compute “missed”; prompt to add programs |
+| `day_label` is free text (“Monday”, “Alternate day”) | Weekday match is best-effort; prefer `missed` over day_label when ambiguous |
+| Two programs same body part (Chest + Chest 2.0) | Counts merge under `chest`; suggest one program by recency rule |
+| Exercise rename typos | Keyword map may miss—prefer `program_id` on session |
+| Medical / overtraining | No “you’re overtraining” diagnosis—report counts only |
+
+---
+
+### 17.13 Configuration
+
+Add to `backend/.env.example`:
+
+```bash
+COACH_MISSED_DAYS_THRESHOLD=7      # days without a body part → "stale / missed"
+COACH_REPEAT_THRESHOLD=3           # sessions in range → "repeated"
+COACH_SPLIT_MAX_RANGE_DAYS=90      # max analyze_training_split window
+COACH_SESSION_HISTORY_LIMIT=60     # max sessions per get_session_history
+```
+
+---
+
+## 18. Testing strategy
+
+### 18.1 Backend unit tests
 
 - `buildCoachContext` with fixture rows: empty day, full day, timezone edge (UTC+14).
 - `dataQuality.warnings` rules.
 - Rate limit counter reset at local midnight (mock clock).
 
-### 17.2 Backend integration tests
+### 18.2 Backend integration tests
 
 - Hit `POST /coach/chat` with mocked LLM (inject `coachLlm` stub).
 - Verify 401 without JWT.
 
-### 17.3 Manual E2E (API mode)
+### 18.3 Manual E2E (API mode)
 
 1. Log meals on Diet → ask coach about protein → numbers match.
 2. Complete workout → ask about volume → matches History day.
 3. New user with no data → coach encourages logging.
 4. 31st message → 429.
 
-### 17.4 Prompt regression suite (optional)
+### 18.4 Workout intelligence tests (Phase 2b)
+
+Use scenarios from [§17.10](#1710-exit-criteria) as automated or manual regression.
+
+- `resolveBodyPart`: program title, keyword fallback, unknown tie
+- `analyzeTrainingSplit`: missed / repeated / suggestedNext priority order
+- E2E: 4 Chest sessions + ask “what did I miss?” → Back in reply
+
+### 18.5 Prompt regression suite (optional)
 
 Store golden `USER_DATA` fixtures + snapshot expected bullet themes (not exact wording).
 
 ---
 
-## 18. Observability and operations
+## 19. Observability and operations
 
-### 18.1 Logging (pino)
+### 19.1 Logging (pino)
 
 Child logger: `{ module: 'coach' }`
 
@@ -971,13 +1489,13 @@ Child logger: `{ module: 'coach' }`
 | LLM error | error | userId, err, provider |
 | Rate limited | warn | userId |
 
-### 18.2 Metrics (future)
+### 19.2 Metrics (future)
 
 - `coach_requests_total{endpoint,status}`
 - `coach_llm_latency_seconds`
 - `coach_tokens_total{direction}`
 
-### 18.3 Feature launch checklist
+### 19.3 Feature launch checklist
 
 - [ ] API keys in production secrets (not git)
 - [ ] Rate limits enabled
@@ -987,10 +1505,11 @@ Child logger: `{ module: 'coach' }`
 
 ---
 
-## 19. Future enhancements
+## 20. Future enhancements
 
 | Enhancement | Depends on |
 |-------------|------------|
+| Split-aware coaching (missed / repeat / next) | **Phase 2b** — [§17](#17-phase-2b--workout-intelligence) |
 | Weekly trend charts interpreted by coach | Analytics / charts feature |
 | “Compare to my average Monday” | 30+ days history + aggregates |
 | Voice input | Expo speech APIs |
@@ -1001,9 +1520,7 @@ Child logger: `{ module: 'coach' }`
 
 ---
 
-## 20. Open decisions
-
-Record decisions here when you review tomorrow:
+## 21. Open decisions
 
 | # | Question | Options | Decision |
 |---|----------|---------|----------|
@@ -1015,12 +1532,15 @@ Record decisions here when you review tomorrow:
 | 6 | Show coach in `USE_LOCAL`? | Mock vs hidden | _TBD_ |
 | 7 | Streaming in v2? | SSE vs wait for full reply | _TBD_ |
 | 8 | Protein goal source | Hardcoded heuristic vs profile field | _TBD_ |
+| 9 | `program_id` on session | Required for 2b vs optional | _Recommend required on new sessions_ |
+| 10 | Repeat threshold | 3 vs 4 sessions per month | _TBD_ — default 3 |
+| 11 | Missed = zero sessions vs stale N days | Zero only vs 7-day stale rule | _TBD_ — default both |
 
 ---
 
-## 21. Appendix: codebase references
+## 22. Appendix: codebase references
 
-### 21.1 Existing backend routes to mirror
+### 22.1 Existing backend routes to mirror
 
 | Route | File | Use for coach context |
 |-------|------|------------------------|
@@ -1029,8 +1549,9 @@ Record decisions here when you review tomorrow:
 | `GET /history/day?date=` | `backend/src/routes/v1/history.ts` | Full day meals + sessions + stats |
 | `GET /history/calendar?from=&to=` | `backend/src/routes/v1/history.ts` | Weekly consistency |
 | `GET /sessions/active` | `backend/src/routes/v1/sessions.ts` | Active workout flag |
+| `GET /programs` | `backend/src/routes/v1/programs.ts` | Phase 2b — user training split |
 
-### 21.2 Existing libraries
+### 22.2 Existing libraries
 
 | Module | Path |
 |--------|------|
@@ -1040,18 +1561,18 @@ Record decisions here when you review tomorrow:
 | Mobile TZ helper | `mobile/src/lib/clientTimeZone.ts` |
 | API client | `mobile/src/services/api.ts` |
 
-### 21.3 Schema (*existing*)
+### 22.3 Schema (*existing*)
 
 | Table | Relevant columns |
 |-------|------------------|
 | `app_user` | `display_name`, `goal_kcal`, `avatar_uri` |
 | `meal` | `name`, `kcal`, `protein`, `carbs`, `fats`, `created_at` |
 | `workout_session` | `started_at`, `ended_at`, `exercises` (JSONB) |
-| `workout_program` | Not required for coach v1 |
+| `workout_program` | `title`, `day_label`, `blocks` — Phase 2b expected split |
 
-Defined in `backend/sql/002_api_core.sql`.
+Defined in `backend/sql/002_api_core.sql`. Phase 2b migration: `006_coach_workout_intelligence.sql` (`program_id` on session).
 
-### 21.4 Mobile types (*existing*)
+### 22.4 Mobile types (*existing*)
 
 | Type | Path |
 |------|------|
@@ -1059,7 +1580,7 @@ Defined in `backend/sql/002_api_core.sql`.
 | `SessionStats`, `ExerciseEntry` | `mobile/src/types/workout.ts` |
 | `DashboardSummary` | `mobile/src/types/user.ts` |
 
-### 21.5 Product status context
+### 22.5 Product status context
 
 As of **2026-05-29** ([STATUS_REPORT.md](../STATUS_REPORT.md)):
 
@@ -1075,6 +1596,7 @@ As of **2026-05-29** ([STATUS_REPORT.md](../STATUS_REPORT.md)):
 | Date | Change |
 |------|--------|
 | 2026-05-29 | Initial specification (planned feature) |
+| 2026-05-30 | Added §17 Phase 2b — Workout intelligence (split analysis, tools, schema) |
 
 ---
 
